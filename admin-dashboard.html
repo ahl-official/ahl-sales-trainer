@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - AHL Sales Trainer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .gradient-bg {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        }
+        .score-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 0.75rem;
+            letter-spacing: 0.025em;
+            text-transform: uppercase;
+        }
+        .score-excellent { background-color: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+        .score-good { background-color: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+        .score-fair { background-color: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+        .score-poor { background-color: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800 text-[15px] leading-6 antialiased">
+    <header class="bg-white border-b border-gray-200 sticky top-0 z-50 backdrop-blur-md bg-opacity-90">
+        <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl gradient-bg flex items-center justify-center text-xl shadow-lg shadow-indigo-200">📊</div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight text-slate-900">Admin Dashboard</h1>
+                    <p class="text-slate-500 text-xs font-medium">Performance Overview</p>
+                </div>
+            </div>
+            <div class="flex gap-3 flex-wrap items-center">
+                <a href="admin-upload.html" class="px-3 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100 flex items-center gap-2">
+                    <span>📤</span> Upload Content
+                </a>
+                <button id="import-users-btn" class="px-3 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100 flex items-center gap-2">
+                    <span>👥</span> Import Users
+                </button>
+                <button id="sync-content-btn" class="px-3 py-2 text-sm font-medium text-slate-600 hover:text-indigo-600 bg-slate-50 hover:bg-indigo-50 rounded-lg transition-colors border border-transparent hover:border-indigo-100 flex items-center gap-2">
+                    <span>🔄</span> Sync Content
+                </button>
+                <div class="h-6 w-px bg-gray-200 mx-1"></div>
+                <button id="logout-btn" class="px-3 py-2 text-sm font-medium text-slate-600 hover:text-red-600 bg-slate-50 hover:bg-red-50 rounded-lg transition-colors">Sign Out</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-6 max-w-7xl">
+        <div class="mb-10 flex flex-col md:flex-row justify-between items-center gap-6">
+            <div class="flex items-center gap-4">
+                <div class="bg-white p-1 rounded-xl shadow-sm border border-gray-200 inline-flex">
+                    <button id="tab-candidates" class="px-5 py-2.5 rounded-lg bg-indigo-50 text-indigo-700 font-semibold transition-all shadow-sm">Candidates</button>
+                    <button id="tab-sessions" class="px-5 py-2.5 rounded-lg text-slate-600 hover:bg-gray-50 font-medium transition-all">All Sessions</button>
+                </div>
+            </div>
+            
+            <div id="simple-search-container" class="flex gap-3 w-full md:w-auto">
+                <div class="relative flex-1 md:w-72">
+                    <input type="text" id="search-input" placeholder="Search candidates..." 
+                        class="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all outline-none text-sm">
+                    <span class="absolute left-3 top-3 text-slate-400">🔍</span>
+                </div>
+                <button id="search-btn" class="px-4 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition-all shadow-md shadow-indigo-100 text-sm">
+                    Search
+                </button>
+                <button id="refresh-btn" class="px-4 py-2.5 bg-white border border-gray-200 text-slate-600 rounded-xl hover:bg-gray-50 transition-all shadow-sm text-sm" title="Refresh">
+                    🔄
+                </button>
+            </div>
+        </div>
+
+        <div id="loading" class="text-center py-20">
+            <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-slate-200 border-t-indigo-600"></div>
+            <p class="mt-4 text-slate-500 font-medium">Loading dashboard data...</p>
+        </div>
+
+        <div id="dashboard-content" class="hidden">
+            <!-- Summary Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow relative overflow-hidden group">
+                    <div class="absolute right-0 top-0 h-full w-1 bg-indigo-500"></div>
+                    <div class="text-sm font-semibold text-slate-500 mb-2 uppercase tracking-wide">Total Candidates</div>
+                    <div id="stat-candidates" class="text-4xl font-bold text-slate-900">0</div>
+                    <div class="absolute bottom-4 right-4 text-indigo-100 transform group-hover:scale-110 transition-transform">
+                        <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 20 20"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/></svg>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow relative overflow-hidden group">
+                    <div class="absolute right-0 top-0 h-full w-1 bg-emerald-500"></div>
+                    <div class="text-sm font-semibold text-slate-500 mb-2 uppercase tracking-wide">Completed Sessions</div>
+                    <div id="stat-sessions" class="text-4xl font-bold text-slate-900">0</div>
+                    <div class="absolute bottom-4 right-4 text-emerald-100 transform group-hover:scale-110 transition-transform">
+                        <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow relative overflow-hidden group">
+                    <div class="absolute right-0 top-0 h-full w-1 bg-violet-500"></div>
+                    <div class="text-sm font-semibold text-slate-500 mb-2 uppercase tracking-wide">Average Score</div>
+                    <div id="stat-avg-score" class="text-4xl font-bold text-slate-900">-</div>
+                    <div class="absolute bottom-4 right-4 text-violet-100 transform group-hover:scale-110 transition-transform">
+                        <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 20 20"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z"/><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z"/></svg>
+                    </div>
+                </div>
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 hover:shadow-md transition-shadow relative overflow-hidden group">
+                    <div class="absolute right-0 top-0 h-full w-1 bg-amber-500"></div>
+                    <div class="text-sm font-semibold text-slate-500 mb-2 uppercase tracking-wide">Active Today</div>
+                    <div id="stat-active" class="text-4xl font-bold text-slate-900">0</div>
+                    <div class="absolute bottom-4 right-4 text-amber-100 transform group-hover:scale-110 transition-transform">
+                        <svg class="w-12 h-12" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Candidates List -->
+            <div id="view-candidates">
+                <div id="candidates-list" class="space-y-6"></div>
+                
+                <!-- Pagination -->
+                <div id="pagination" class="mt-8 flex justify-center items-center gap-3 hidden">
+                    <button id="prev-page" class="px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm text-sm font-medium">
+                        Previous
+                    </button>
+                    <span id="page-info" class="text-slate-600 font-medium text-sm bg-slate-100 px-3 py-1 rounded-md">Page 1 of 1</span>
+                    <button id="next-page" class="px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm text-sm font-medium">
+                        Next
+                    </button>
+                </div>
+
+                <!-- No Data Message -->
+                <div id="no-data" class="hidden text-center py-20 bg-white rounded-2xl border border-dashed border-gray-200">
+                    <div class="text-6xl mb-4">📊</div>
+                    <h3 class="text-xl font-bold text-slate-800 mb-2">No Candidate Data Yet</h3>
+                    <p class="text-slate-500 max-w-md mx-auto mb-6">Create candidate accounts and have them complete training sessions to see data here.</p>
+                    <a href="admin-upload.html" class="inline-block px-6 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-200">
+                        Create Candidates
+                    </a>
+                </div>
+            </div>
+
+            <!-- View: Advanced Search (Sessions) -->
+            <div id="view-sessions" class="hidden">
+                <!-- Filters -->
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
+                    <h3 class="text-lg font-bold mb-6 text-slate-800 flex items-center gap-2">
+                        <svg class="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+                        Advanced Filters
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Date Range</label>
+                            <div class="flex gap-2">
+                                <input type="date" id="filter-start-date" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none">
+                                <span class="self-center text-slate-400">-</span>
+                                <input type="date" id="filter-end-date" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Score Range (0-10)</label>
+                            <div class="flex gap-2">
+                                <input type="number" id="filter-min-score" placeholder="Min" min="0" max="10" step="0.1" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none">
+                                <span class="self-center text-slate-400">-</span>
+                                <input type="number" id="filter-max-score" placeholder="Max" min="0" max="10" step="0.1" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Category</label>
+                            <select id="filter-category" class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none">
+                                <option value="">All Categories</option>
+                                <option value="Objection Handling">Objection Handling</option>
+                                <option value="Needs Analysis">Needs Analysis</option>
+                                <option value="Closing Techniques">Closing Techniques</option>
+                                <option value="Product Knowledge">Product Knowledge</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-3 flex flex-col md:flex-row justify-between items-center gap-4 mt-2">
+                            <div class="relative w-full md:max-w-md">
+                                <input type="text" id="filter-search" placeholder="Search candidate name..." class="w-full pl-9 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none">
+                                <span class="absolute left-3 top-2.5 text-slate-400">🔍</span>
+                            </div>
+                            <div class="flex gap-3 w-full md:w-auto">
+                                <button id="filter-clear-btn" class="flex-1 md:flex-none px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-medium transition border border-transparent hover:border-slate-200">Clear</button>
+                                <button id="filter-apply-btn" class="flex-1 md:flex-none px-6 py-2.5 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 text-sm transition shadow-md shadow-indigo-100">Apply Filters</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results Table -->
+                <div class="mb-4 flex justify-between items-center">
+                    <div class="text-sm font-medium text-slate-500" id="selection-info"></div>
+                    <button id="bulk-delete-btn" class="hidden px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-lg hover:bg-red-700 transition shadow-sm flex items-center gap-2" onclick="deleteSelectedSessions()">
+                        <span>🗑️</span> Delete Selected
+                    </button>
+                </div>
+                <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full divide-y divide-gray-200">
+                            <thead class="bg-slate-50">
+                                <tr>
+                                    <th class="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider w-10">
+                                        <input type="checkbox" id="select-all-sessions" onchange="toggleAllSessions(this)" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                    </th>
+                                    <th class="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Candidate</th>
+                                    <th class="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Category</th>
+                                    <th class="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Date</th>
+                                    <th class="px-6 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Score</th>
+                                    <th class="px-6 py-4 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="sessions-table-body" class="bg-white divide-y divide-gray-100 text-sm leading-relaxed">
+                                <!-- Rows will be populated here -->
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="sessions-loading" class="hidden py-12 text-center">
+                        <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-200 border-t-indigo-600"></div>
+                    </div>
+                    <div id="sessions-empty" class="hidden py-12 text-center text-slate-500 bg-slate-50">
+                        No sessions found matching your filters.
+                    </div>
+                </div>
+
+                <!-- Session Pagination -->
+                <div id="sessions-pagination" class="mt-6 flex justify-center items-center gap-3 hidden">
+                    <button id="sessions-prev-page" class="px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm text-sm font-medium">Previous</button>
+                    <span id="sessions-page-info" class="text-slate-600 font-medium text-sm bg-slate-100 px-3 py-1 rounded-md">Page 1 of 1</span>
+                    <button id="sessions-next-page" class="px-4 py-2 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm text-sm font-medium">Next</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Import Users Modal -->
+    <div id="import-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50 transition-opacity">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 transform transition-all scale-100">
+            <h2 class="text-2xl font-bold mb-2 text-slate-900">Import Users</h2>
+            <p class="text-slate-500 mb-6 text-sm">Upload a CSV file with columns: <code>username</code>, <code>password</code>, <code>name</code>, <code>role</code> (optional).</p>
+            
+            <form id="import-form" class="space-y-6">
+                <div class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center hover:bg-slate-50 hover:border-indigo-400 transition-colors cursor-pointer group" id="drop-zone">
+                    <input type="file" id="csv-file" accept=".csv" class="hidden">
+                    <label for="csv-file" class="cursor-pointer w-full h-full block">
+                        <div class="text-4xl mb-3 group-hover:scale-110 transition-transform">📄</div>
+                        <span class="text-indigo-600 font-bold block mb-1">Click to upload CSV</span>
+                        <span class="text-slate-400 text-xs">or drag and drop here</span>
+                        <p id="file-name" class="text-sm text-slate-700 mt-4 font-medium bg-slate-100 rounded px-2 py-1 inline-block hidden"></p>
+                    </label>
+                </div>
+                
+                <div class="flex justify-end gap-3">
+                    <button type="button" id="close-import" class="px-5 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl font-medium transition">Cancel</button>
+                    <button type="submit" class="px-5 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition shadow-lg shadow-indigo-200">Import Users</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Session Detail Modal -->
+    <div id="session-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="gradient-bg text-white p-6 flex justify-between items-center shrink-0">
+                <div class="flex items-center gap-3">
+                    <div class="bg-white/20 p-2 rounded-lg">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    </div>
+                    <h2 class="text-2xl font-bold tracking-tight">Session Report</h2>
+                </div>
+                <button id="close-modal" aria-label="Close modal" class="text-white/80 hover:text-white hover:bg-white/10 rounded-full p-2 transition">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="p-8 overflow-y-auto grow custom-scrollbar">
+                <div id="modal-content">
+                    <div class="text-center py-20">
+                        <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-slate-200 border-t-indigo-600"></div>
+                        <p class="mt-4 text-slate-500 font-medium">Loading report...</p>
+                    </div>
+                </div>
+                
+                <!-- Admin Notes Section -->
+                <div class="mt-10 border-t border-gray-100 pt-8">
+                    <h3 class="text-lg font-bold mb-4 text-slate-800 flex items-center gap-2">
+                        <span>📝</span> Admin Notes
+                    </h3>
+                    <div class="relative group">
+                        <textarea id="session-notes" rows="4" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-4 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all outline-none resize-none" placeholder="Add feedback or internal notes about this session..."></textarea>
+                        <div id="notes-status" class="absolute bottom-4 right-4 text-xs font-medium text-slate-400 transition-opacity"></div>
+                    </div>
+                    <div class="mt-4 flex justify-end">
+                        <button id="save-notes-btn" class="px-6 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition shadow-md shadow-indigo-100 flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            Save Notes
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2"></div>
+    <script>
+        // Toast Notification System
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            let bgClass = 'bg-gray-800';
+            if (type === 'success') bgClass = 'bg-green-600';
+            if (type === 'error') bgClass = 'bg-red-600';
+            if (type === 'warning') bgClass = 'bg-yellow-600';
+            
+            toast.className = `${bgClass} text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 translate-y-full opacity-0 flex items-center gap-2`;
+            toast.innerHTML = `
+                <span>${message}</span>
+                <button onclick="this.parentElement.remove()" class="ml-4 text-white hover:text-gray-200">&times;</button>
+            `;
+            
+            container.appendChild(toast);
+            
+            // Animate in
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-full', 'opacity-0');
+            });
+            
+            // Auto dismiss
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Keyboard Shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Search shortcut (/)
+            if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+                e.preventDefault();
+                const searchInput = !document.getElementById('view-sessions').classList.contains('hidden') 
+                    ? document.getElementById('filter-search') 
+                    : document.getElementById('search-input');
+                searchInput?.focus();
+            }
+            
+            // Close modal shortcut (Esc)
+            if (e.key === 'Escape') {
+                const sessionModal = document.getElementById('session-modal');
+                const importModal = document.getElementById('import-modal');
+                
+                if (!sessionModal.classList.contains('hidden')) {
+                    document.getElementById('close-modal').click();
+                } else if (!importModal.classList.contains('hidden')) {
+                    document.getElementById('close-import').click();
+                }
+            }
+        });
+
+        // Focus Management
+        let lastFocusedElement = null;
+
+        const API_BASE = 'http://localhost:5051';
+        let currentPage = 1;
+        let currentSearch = '';
+        const limit = 10;
+        
+        // Advanced Search State
+        let sessionPage = 1;
+        const sessionLimit = 20;
+        let activeTab = 'candidates';
+
+        // Check authentication
+        const user = JSON.parse(localStorage.getItem('ahl_user') || '{}');
+        if (!user.id || user.role !== 'admin') {
+            window.location.href = 'login.html';
+        }
+        
+        // Logout
+        document.getElementById('logout-btn').addEventListener('click', async () => {
+            try {
+                await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include', keepalive: true });
+            } catch (e) {
+                console.warn('Logout fetch failed, but redirecting anyway:', e);
+            }
+            localStorage.removeItem('ahl_user');
+            window.location.href = 'login.html';
+        });
+
+        // Tab Switching
+        document.getElementById('tab-candidates').addEventListener('click', () => switchTab('candidates'));
+        document.getElementById('tab-sessions').addEventListener('click', () => switchTab('sessions'));
+
+        function switchTab(tab) {
+            activeTab = tab;
+            const tabCandidates = document.getElementById('tab-candidates');
+            const tabSessions = document.getElementById('tab-sessions');
+            const viewCandidates = document.getElementById('view-candidates');
+            const viewSessions = document.getElementById('view-sessions');
+            const simpleSearch = document.getElementById('simple-search-container');
+
+            if (tab === 'candidates') {
+                tabCandidates.className = 'px-4 py-2 rounded-md bg-blue-100 text-blue-700 font-medium transition';
+                tabSessions.className = 'px-4 py-2 rounded-md text-gray-600 hover:bg-gray-50 font-medium transition';
+                viewCandidates.classList.remove('hidden');
+                viewSessions.classList.add('hidden');
+                simpleSearch.classList.remove('hidden');
+            } else {
+                tabCandidates.className = 'px-4 py-2 rounded-md text-gray-600 hover:bg-gray-50 font-medium transition';
+                tabSessions.className = 'px-4 py-2 rounded-md bg-blue-100 text-blue-700 font-medium transition';
+                viewCandidates.classList.add('hidden');
+                viewSessions.classList.remove('hidden');
+                simpleSearch.classList.add('hidden');
+                loadSessions(); // Load sessions when tab is opened
+            }
+        }
+
+        // Advanced Search Event Listeners
+        document.getElementById('filter-apply-btn').addEventListener('click', () => {
+            sessionPage = 1;
+            loadSessions();
+        });
+
+        document.getElementById('filter-clear-btn').addEventListener('click', () => {
+            document.getElementById('filter-start-date').value = '';
+            document.getElementById('filter-end-date').value = '';
+            document.getElementById('filter-min-score').value = '';
+            document.getElementById('filter-max-score').value = '';
+            document.getElementById('filter-category').value = '';
+            document.getElementById('filter-search').value = '';
+            sessionPage = 1;
+            loadSessions();
+        });
+
+        document.getElementById('sessions-prev-page').addEventListener('click', () => {
+            if (sessionPage > 1) {
+                sessionPage--;
+                loadSessions();
+            }
+        });
+
+        document.getElementById('sessions-next-page').addEventListener('click', () => {
+            sessionPage++;
+            loadSessions();
+        });
+
+        // Search & Pagination Event Listeners (Candidates)
+        document.getElementById('search-btn').addEventListener('click', () => {
+            currentSearch = document.getElementById('search-input').value;
+            currentPage = 1;
+            loadDashboard();
+        });
+        
+        document.getElementById('search-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                currentSearch = e.target.value;
+                currentPage = 1;
+                loadDashboard();
+            }
+        });
+        
+        document.getElementById('refresh-btn').addEventListener('click', () => {
+            if (activeTab === 'candidates') loadDashboard();
+            else loadSessions();
+        });
+        
+        document.getElementById('prev-page').addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                loadDashboard();
+            }
+        });
+        
+        document.getElementById('next-page').addEventListener('click', () => {
+            currentPage++;
+            loadDashboard();
+        });
+        
+        // Load sessions data
+        async function loadSessions() {
+            const tableBody = document.getElementById('sessions-table-body');
+            const loading = document.getElementById('sessions-loading');
+            const empty = document.getElementById('sessions-empty');
+            const pagination = document.getElementById('sessions-pagination');
+            
+            tableBody.innerHTML = '';
+            loading.classList.remove('hidden');
+            empty.classList.add('hidden');
+            pagination.classList.add('hidden');
+
+            try {
+                const params = new URLSearchParams({
+                    page: sessionPage,
+                    limit: sessionLimit,
+                    start_date: document.getElementById('filter-start-date').value,
+                    end_date: document.getElementById('filter-end-date').value,
+                    min_score: document.getElementById('filter-min-score').value,
+                    max_score: document.getElementById('filter-max-score').value,
+                    category: document.getElementById('filter-category').value,
+                    search: document.getElementById('filter-search').value
+                });
+
+                // Remove empty params
+                for (const [key, value] of [...params]) {
+                    if (!value) params.delete(key);
+                }
+
+                const response = await fetch(`${API_BASE}/api/admin/sessions/search?${params}`, {
+                    credentials: 'include'
+                });
+
+                if (!response.ok) throw new Error('Failed to load sessions');
+
+                const data = await response.json();
+                const sessions = data.sessions;
+                const pageData = data.pagination;
+
+                loading.classList.add('hidden');
+
+                if (sessions.length === 0) {
+                    empty.classList.remove('hidden');
+                    return;
+                }
+
+                sessions.forEach(session => {
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-gray-50 transition';
+                    
+                    const date = new Date(session.started_at).toLocaleDateString() + ' ' + new Date(session.started_at).toLocaleTimeString();
+                    const scoreClass = getScoreClass(session.overall_score);
+                    
+                    row.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <input type="checkbox" class="session-checkbox" value="${session.id}" onchange="updateBulkDeleteButton()">
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="text-sm font-medium text-gray-900">${session.candidate_name || 'Unknown'}</div>
+                            <div class="text-sm text-gray-500">@${session.username || 'unknown'}</div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${session.category}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${date}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <span class="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${scoreClass}">
+                                ${session.overall_score ? session.overall_score.toFixed(1) : '-'}
+                            </span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <button onclick="viewSession(${session.id})" aria-label="View session report" title="View session report" class="text-blue-600 hover:text-blue-900 mr-3">View Report</button>
+                            <button onclick="deleteSession(${session.id})" aria-label="Delete session" title="Delete this session" class="text-red-600 hover:text-red-900">Delete</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+
+                // Update pagination
+                if (pageData.pages > 1) {
+                    pagination.classList.remove('hidden');
+                    document.getElementById('sessions-page-info').textContent = `Page ${pageData.page} of ${pageData.pages}`;
+                    document.getElementById('sessions-prev-page').disabled = pageData.page <= 1;
+                    document.getElementById('sessions-next-page').disabled = pageData.page >= pageData.pages;
+                }
+
+            } catch (error) {
+                console.error('Error loading sessions:', error);
+                loading.innerHTML = `<div class="text-red-600">Failed to load data</div>`;
+            }
+        }
+
+        function getScoreClass(score) {
+            if (!score) return 'bg-gray-100 text-gray-800';
+            if (score >= 8.0) return 'bg-green-100 text-green-800';
+            if (score >= 6.0) return 'bg-blue-100 text-blue-800';
+            if (score >= 4.0) return 'bg-yellow-100 text-yellow-800';
+            return 'bg-red-100 text-red-800';
+        }
+
+        // Load dashboard data
+        async function loadDashboard() {
+            try {
+                const params = new URLSearchParams({
+                    page: currentPage,
+                    limit: limit,
+                    search: currentSearch
+                });
+
+                const response = await fetch(`${API_BASE}/api/admin/dashboard?${params}`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) throw new Error('Failed to load dashboard');
+                
+                const data = await response.json();
+                
+                const candidates = data.candidates || []; // Handle backward compat if needed
+                const pagination = data.pagination;
+
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('dashboard-content').classList.remove('hidden');
+                
+                // Hide no data initially
+                document.getElementById('no-data').classList.add('hidden');
+
+                if (candidates.length === 0) {
+                    if (currentPage === 1 && !currentSearch) {
+                        document.getElementById('no-data').classList.remove('hidden');
+                        document.getElementById('pagination').classList.add('hidden');
+                    } else {
+                        // Search returned no results
+                         document.getElementById('candidates-list').innerHTML = '<div class="text-center text-gray-500 py-8">No candidates found matching your search.</div>';
+                         document.getElementById('pagination').classList.add('hidden');
+                    }
+                    // Continue to update stats even if list is empty
+                }
+                
+                // Update summary stats
+                if (data.stats) {
+                    document.getElementById('stat-candidates').textContent = data.stats.total_candidates;
+                    document.getElementById('stat-sessions').textContent = data.stats.completed_sessions;
+                    document.getElementById('stat-avg-score').textContent = data.stats.average_score + '/10';
+                    document.getElementById('stat-active').textContent = data.stats.active_today;
+                } else {
+                    // Fallback for backward compatibility (calculates only from visible page)
+                    const totalSessions = candidates.reduce((sum, c) => sum + c.completed_sessions, 0);
+                    const allScores = candidates
+                        .map(c => c.overall_average)
+                        .filter(s => s !== null);
+                    const avgScore = allScores.length > 0 
+                        ? (allScores.reduce((sum, s) => sum + s, 0) / allScores.length).toFixed(1)
+                        : '-';
+                    
+                    document.getElementById('stat-candidates').textContent = candidates.length;
+                    document.getElementById('stat-sessions').textContent = totalSessions;
+                    document.getElementById('stat-avg-score').textContent = avgScore !== '-' ? avgScore + '/10' : '-';
+                }
+                
+                
+                // Render candidate cards
+                const list = document.getElementById('candidates-list');
+                list.innerHTML = '';
+                
+                candidates.forEach(candidate => {
+                    const card = createCandidateCard(candidate);
+                    list.appendChild(card);
+                });
+
+                // Update pagination controls
+                if (pagination) {
+                    document.getElementById('pagination').classList.remove('hidden');
+                    document.getElementById('page-info').textContent = `Page ${pagination.page} of ${pagination.pages || 1}`;
+                    document.getElementById('prev-page').disabled = pagination.page <= 1;
+                    document.getElementById('next-page').disabled = pagination.page >= pagination.pages;
+                }
+                
+            } catch (error) {
+                console.error('Error loading dashboard:', error);
+                document.getElementById('loading').innerHTML = `
+                    <div class="text-center text-red-600">
+                        <p class="text-xl font-semibold mb-2">Failed to load dashboard</p>
+                        <p class="text-sm">${error.message}</p>
+                        <button onclick="loadDashboard()" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            Retry
+                        </button>
+                    </div>
+                `;
+            }
+        }
+        
+        function createCandidateCard(candidate) {
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-lg shadow-lg overflow-hidden';
+            
+            const overallBadge = candidate.overall_average 
+                ? `<span class="${getScoreBadgeClass(candidate.overall_average)}">${candidate.overall_average}/10</span>`
+                : '<span class="text-gray-400 text-sm">No scores yet</span>';
+            
+            let categoriesHtml = '';
+            if (Object.keys(candidate.category_performance).length > 0) {
+                categoriesHtml = '<div class="mt-4 space-y-2">';
+                for (const [category, perf] of Object.entries(candidate.category_performance)) {
+                    categoriesHtml += `
+                        <div class="flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition cursor-pointer" onclick="viewCategorySessions('${candidate.user_id}', '${category}')">
+                            <div class="flex-1">
+                                <span class="font-medium text-gray-800">${category}</span>
+                                <span class="text-xs text-gray-500 ml-2">(${perf.count} session${perf.count !== 1 ? 's' : ''})</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="${getScoreBadgeClass(perf.average)}">${perf.average}/10</span>
+                                ${perf.latest !== null ? `<span class="text-xs text-gray-500">Latest: ${perf.latest}</span>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }
+                categoriesHtml += '</div>';
+            } else {
+                if (candidate.completed_sessions > 0) {
+                    categoriesHtml = `
+                        <div class="mt-4 text-center text-gray-600 text-sm">
+                            Category breakdown unavailable.
+                            <button 
+                                class="ml-2 text-indigo-600 hover:text-indigo-800 font-semibold"
+                                onclick="viewUserSessions(${candidate.user_id})"
+                            >
+                                View ${candidate.completed_sessions} completed session${candidate.completed_sessions !== 1 ? 's' : ''}
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    categoriesHtml = '<div class="mt-4 text-center text-gray-500 text-sm">No completed sessions yet</div>';
+                }
+            }
+            
+            card.innerHTML = `
+                <div class="p-6">
+                    <div class="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 class="text-2xl font-bold text-gray-800">${candidate.name}</h3>
+                            <p class="text-sm text-gray-500">@${candidate.username}</p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm text-gray-600 mb-1">Overall Score</div>
+                            ${overallBadge}
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 mb-4 p-4 bg-blue-50 rounded-lg">
+                        <div>
+                            <div class="text-xs text-gray-600">Total Sessions</div>
+                            <div class="text-lg font-semibold text-gray-800">${candidate.total_sessions}</div>
+                        </div>
+                        <div>
+                            <div class="text-xs text-gray-600">Completed</div>
+                            <div class="text-lg font-semibold text-green-600">${candidate.completed_sessions}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="border-t pt-4">
+                        <h4 class="font-semibold text-gray-700 mb-2">Performance by Category</h4>
+                        ${categoriesHtml}
+                    </div>
+                    
+                    <div class="mt-4 pt-4 border-t flex justify-end">
+                        <button onclick="deleteUser(${candidate.user_id}, '${candidate.username}')" class="text-red-600 hover:text-red-800 text-sm font-medium flex items-center gap-1">
+                            <span class="text-lg">🗑️</span> Delete Candidate
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            return card;
+        }
+        
+        function getScoreBadgeClass(score) {
+            if (score >= 9) return 'score-badge score-excellent';
+            if (score >= 7) return 'score-badge score-good';
+            if (score >= 5) return 'score-badge score-fair';
+            return 'score-badge score-poor';
+        }
+        
+        let lastUserIdForModal = null;
+        let lastCategoryForModal = null;
+        const reportScoreCache = {};
+        
+        async function viewCategorySessions(userId, category) {
+            lastUserIdForModal = userId;
+            lastCategoryForModal = category;
+            // Open modal
+            document.getElementById('session-modal').classList.remove('hidden');
+            document.getElementById('modal-content').innerHTML = `
+                <div class="text-center py-12">
+                    <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-300 border-t-blue-600"></div>
+                    <p class="mt-4 text-gray-600">Loading sessions...</p>
+                </div>
+            `;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/sessions/user/${userId}`, {
+                    credentials: 'include'
+                });
+                
+                const data = await response.json();
+                
+                // Filter by category
+                const sessions = data.sessions.filter(s => s.category === category && s.status === 'completed');
+                
+                if (sessions.length === 0) {
+                    document.getElementById('modal-content').innerHTML = `
+                        <div class="text-center py-12">
+                            <p class="text-gray-600">No completed sessions for this category yet.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = `
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold text-gray-800">${category} - All Sessions</h3>
+                        <button onclick="goBackFromReport()" class="px-3 py-1.5 text-sm bg-white border border-gray-200 rounded-lg text-slate-700 hover:bg-gray-50">← Back</button>
+                    </div>
+                `;
+                html += '<div class="space-y-4">';
+                
+                sessions.forEach(session => {
+                    const date = new Date(session.started_at).toLocaleString();
+                    const scoreId = `score-${session.id}`;
+                    const score = (session.overall_score !== null && session.overall_score !== undefined) ? `${session.overall_score}/10` : 'No score';
+                    
+                    html += `
+                        <div class="border rounded-lg p-4 hover:bg-gray-50 transition cursor-pointer" onclick="viewSessionReport(${session.id})">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <div class="font-semibold text-gray-800">${date}</div>
+                                    <div class="text-sm text-gray-600">Duration: ${session.duration_minutes} minutes • Difficulty: ${session.difficulty}</div>
+                                </div>
+                                <div class="text-right">
+                                    <span id="${scoreId}">${(session.overall_score !== null && session.overall_score !== undefined) ? `<span class="${getScoreBadgeClass(session.overall_score)}">${score}</span>` : '<span class="text-gray-400 text-sm">No score</span>'}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                
+                document.getElementById('modal-content').innerHTML = html;
+                
+                // Async fill missing scores from report meta
+                sessions.forEach(async (session) => {
+                    if (session.overall_score === null || session.overall_score === undefined) {
+                        const scoreEl = document.getElementById(`score-${session.id}`);
+                        const metaScore = await getScoreFromReport(session.id);
+                        if (metaScore !== null && scoreEl) {
+                            scoreEl.innerHTML = `<span class="${getScoreBadgeClass(metaScore)}">${metaScore}/10</span>`;
+                        }
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Error loading sessions:', error);
+                document.getElementById('modal-content').innerHTML = `
+                    <div class="text-center text-red-600">
+                        <p>Failed to load sessions</p>
+                    </div>
+                `;
+            }
+        }
+        
+        async function viewUserSessions(userId) {
+            lastUserIdForModal = userId;
+            lastCategoryForModal = null;
+            document.getElementById('session-modal').classList.remove('hidden');
+            document.getElementById('modal-content').innerHTML = `
+                <div class="text-center py-12">
+                    <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-300 border-t-blue-600"></div>
+                    <p class="mt-4 text-gray-600">Loading sessions...</p>
+                </div>
+            `;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/sessions/user/${userId}`, {
+                    credentials: 'include'
+                });
+                const data = await response.json();
+                
+                const sessions = (data.sessions || []).filter(s => s.status === 'completed');
+                
+                if (sessions.length === 0) {
+                    document.getElementById('modal-content').innerHTML = `
+                        <div class="text-center py-12">
+                            <p class="text-gray-600">No completed sessions for this candidate yet.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = `
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold text-gray-800">All Completed Sessions</h3>
+                        <button onclick="goBackFromReport()" class="px-3 py-1.5 text-sm bg-white border border-gray-200 rounded-lg text-slate-700 hover:bg-gray-50">← Back</button>
+                    </div>
+                `;
+                html += '<div class="space-y-4">';
+                
+                sessions.forEach(session => {
+                    const date = new Date(session.started_at).toLocaleString();
+                    const scoreId = `score-${session.id}`;
+                    const score = (session.overall_score !== null && session.overall_score !== undefined) ? `${session.overall_score}/10` : 'No score';
+                    const category = session.category || 'Uncategorized';
+                    
+                    html += `
+                        <div class="border rounded-lg p-4 hover:bg-gray-50 transition cursor-pointer" onclick="viewSessionReport(${session.id})">
+                            <div class="flex justify-between items-center">
+                                <div>
+                                    <div class="font-semibold text-gray-800">${date}</div>
+                                    <div class="text-sm text-gray-600">
+                                        Duration: ${session.duration_minutes} minutes • Difficulty: ${session.difficulty}
+                                    </div>
+                                    <div class="mt-1">
+                                        <span class="px-2 py-1 text-xs rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">${category}</span>
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <span id="${scoreId}">${(session.overall_score !== null && session.overall_score !== undefined) ? `<span class="${getScoreBadgeClass(session.overall_score)}">${score}</span>` : '<span class="text-gray-400 text-sm">No score</span>'}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                document.getElementById('modal-content').innerHTML = html;
+                
+                // Async fill missing scores from report meta
+                sessions.forEach(async (session) => {
+                    if (session.overall_score === null || session.overall_score === undefined) {
+                        const scoreEl = document.getElementById(`score-${session.id}`);
+                        const metaScore = await getScoreFromReport(session.id);
+                        if (metaScore !== null && scoreEl) {
+                            scoreEl.innerHTML = `<span class="${getScoreBadgeClass(metaScore)}">${metaScore}/10</span>`;
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error loading user sessions:', error);
+                document.getElementById('modal-content').innerHTML = `
+                    <div class="text-center text-red-600">
+                        <p>Failed to load sessions</p>
+                    </div>
+                `;
+            }
+        }
+        
+        async function getScoreFromReport(sessionId) {
+            if (reportScoreCache[sessionId] !== undefined) {
+                return reportScoreCache[sessionId];
+            }
+            try {
+                const resp = await fetch(`${API_BASE}/api/training/report/${sessionId}`, {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                if (!resp.ok) {
+                    reportScoreCache[sessionId] = null;
+                    return null;
+                }
+                const data = await resp.json();
+                const html = data.report_html || '';
+                const match = html.match(/<meta name=['"]overall_score['"] content=['"]([^'"]*)['"]>/i);
+                if (match) {
+                    const val = match[1];
+                    const num = val === '' ? null : parseFloat(val);
+                    reportScoreCache[sessionId] = isNaN(num) ? null : num;
+                    return reportScoreCache[sessionId];
+                }
+                reportScoreCache[sessionId] = null;
+                return null;
+            } catch (e) {
+                reportScoreCache[sessionId] = null;
+                return null;
+            }
+        }
+        
+        let currentSessionId = null;
+
+        async function viewSession(sessionId) {
+            lastFocusedElement = document.activeElement;
+            currentSessionId = sessionId;
+            const modal = document.getElementById('session-modal');
+            const content = document.getElementById('modal-content');
+            
+            modal.classList.remove('hidden');
+            // Trap focus inside modal
+            modal.setAttribute('aria-modal', 'true');
+            modal.setAttribute('role', 'dialog');
+            modal.focus();
+
+            content.innerHTML = `
+                <div class="text-center py-12">
+                    <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-300 border-t-blue-600"></div>
+                    <p class="mt-4 text-gray-600">Loading report...</p>
+                </div>
+            `;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/training/report/${sessionId}`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) throw new Error('Failed to load report');
+                
+                const data = await response.json();
+                
+                content.innerHTML = `
+                    <div class="flex justify-between items-center mb-6 border-b pb-4">
+                        <div class="flex items-center gap-2">
+                            <button onclick="goBackFromReport()" class="px-3 py-1.5 text-sm bg-white border border-gray-200 rounded-lg text-slate-700 hover:bg-gray-50">← Back</button>
+                            <h3 class="text-xl font-bold text-gray-800">Performance Report</h3>
+                        </div>
+                        <button onclick="downloadPdf(${sessionId})" aria-label="Export as PDF" class="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">
+                            <span>📄</span> Export PDF
+                        </button>
+                    </div>
+                    <div class="prose max-w-none mb-8">
+                        ${data.report_html}
+                    </div>
+                    
+                    <!-- Admin Notes Section -->
+                    <div class="mt-6 border-t pt-6 bg-gray-50 p-4 rounded-lg">
+                        <h3 class="text-lg font-bold mb-2 text-gray-800">Admin Notes</h3>
+                        <div class="relative">
+                            <textarea id="session-notes" rows="4" class="w-full border rounded-lg p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none" placeholder="Add feedback or notes about this session..."></textarea>
+                        </div>
+                        <div class="mt-2 flex justify-end">
+                            <button id="save-notes-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">Save Notes</button>
+                        </div>
+                    </div>
+                `;
+                
+                if (data.session && data.session.notes) {
+                    document.getElementById('session-notes').value = data.session.notes;
+                }
+                
+                document.getElementById('save-notes-btn').addEventListener('click', saveNotes);
+                
+            } catch (error) {
+                console.error('Error loading report:', error);
+                content.innerHTML = `
+                    <div class="text-center text-red-600">
+                        <p>Failed to load report</p>
+                    </div>
+                `;
+                showToast('Failed to load report', 'error');
+            }
+        }
+        
+        // Alias for backward compatibility
+        const viewSessionReport = viewSession;
+        
+        function goBackFromReport() {
+            if (lastCategoryForModal) {
+                viewCategorySessions(lastUserIdForModal, lastCategoryForModal);
+            } else if (lastUserIdForModal) {
+                viewUserSessions(lastUserIdForModal);
+            } else {
+                closeModal();
+            }
+        }
+        
+        async function saveNotes() {
+            const notes = document.getElementById('session-notes').value;
+            const btn = document.getElementById('save-notes-btn');
+            
+            if (!currentSessionId) return;
+            
+            btn.disabled = true;
+            btn.textContent = 'Saving...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/sessions/${currentSessionId}/notes`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ notes })
+                });
+                
+                if (!response.ok) throw new Error('Failed to save notes');
+                
+                showToast('Notes saved successfully!', 'success');
+                
+            } catch (error) {
+                console.error('Error saving notes:', error);
+                showToast('Failed to save notes', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Save Notes';
+            }
+        }
+        
+        async function downloadPdf(sessionId) {
+            const btn = event.target.closest('button');
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = `
+                <div class="inline-block animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                Generating...
+            `;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/sessions/${sessionId}/export/pdf`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) throw new Error('Export failed');
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                // Get filename from header or default
+                const contentDisposition = response.headers.get('Content-Disposition');
+                let filename = 'report.pdf';
+                if (contentDisposition && contentDisposition.includes('filename=')) {
+                    filename = contentDisposition.split('filename=')[1].replace(/"/g, '');
+                }
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                showToast('PDF downloaded successfully', 'success');
+                
+            } catch (error) {
+                console.error('Error downloading PDF:', error);
+                showToast('Failed to generate PDF report', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        }
+        
+        // Close modal
+        function closeModal() {
+            document.getElementById('session-modal').classList.add('hidden');
+            if (lastFocusedElement) lastFocusedElement.focus();
+        }
+
+        document.getElementById('close-modal').addEventListener('click', closeModal);
+        
+        // Click outside modal to close
+        document.getElementById('session-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'session-modal') {
+                closeModal();
+            }
+        });
+        
+        // Refresh button
+        document.getElementById('refresh-btn').addEventListener('click', () => {
+            document.getElementById('dashboard-content').classList.add('hidden');
+            document.getElementById('loading').classList.remove('hidden');
+            loadDashboard();
+        });
+        
+        // Initial load
+        loadDashboard();
+        
+        // Auto-refresh every 30 seconds
+        setInterval(() => {
+            loadDashboard();
+        }, 30000);
+
+        // Import Modal Logic
+        const importBtn = document.getElementById('import-users-btn');
+        const importModal = document.getElementById('import-modal');
+        const closeImport = document.getElementById('close-import');
+        const importForm = document.getElementById('import-form');
+        const csvFile = document.getElementById('csv-file');
+        const fileName = document.getElementById('file-name');
+
+        if (importBtn) {
+            importBtn.addEventListener('click', () => {
+                importModal.classList.remove('hidden');
+            });
+        }
+
+        if (closeImport) {
+            closeImport.addEventListener('click', () => {
+                importModal.classList.add('hidden');
+                importForm.reset();
+                fileName.textContent = '';
+            });
+        }
+
+        if (csvFile) {
+            csvFile.addEventListener('change', (e) => {
+                if (e.target.files[0]) {
+                    fileName.textContent = e.target.files[0].name;
+                }
+            });
+        }
+
+        if (importForm) {
+            importForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const file = csvFile.files[0];
+                if (!file) {
+                    showToast('Please select a CSV file', 'warning');
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const submitBtn = importForm.querySelector('button[type="submit"]');
+                const originalText = submitBtn.textContent;
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Importing...';
+                
+                try {
+                    const response = await fetch(`${API_BASE}/api/admin/users/import`, {
+                        method: 'POST',
+                        body: formData,
+                        credentials: 'include'
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        showToast(`Import Complete! Success: ${result.summary.success.length}`, 'success');
+                        importModal.classList.add('hidden');
+                        importForm.reset();
+                        fileName.textContent = '';
+                        loadDashboard(); // Refresh list
+                    } else {
+                        showToast('Import failed: ' + (result.message || 'Unknown error'), 'error');
+                    }
+                } catch (error) {
+                    console.error('Import error:', error);
+                    showToast('An error occurred during import.', 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                }
+            });
+        }
+
+        // ==========================================
+        // DELETION & SYNC LOGIC
+        // ==========================================
+
+        // Sync Content Event Listener
+        document.getElementById('sync-content-btn').addEventListener('click', syncContent);
+
+        async function syncContent() {
+            const btn = document.getElementById('sync-content-btn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '🔄 Syncing...';
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/sync-content`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showToast(`Sync complete! Added: ${data.added}, Deleted: ${data.deleted}`, 'success');
+                    loadDashboard(); // Refresh stats
+                } else {
+                    showToast(data.message || 'Sync failed', 'error');
+                }
+            } catch (e) {
+                console.error('Sync error:', e);
+                showToast('Error syncing content: ' + e.message, 'error');
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function deleteUser(userId, username) {
+            if (!confirm(`Are you sure you want to delete candidate "${username}"? This action cannot be undone and will delete all their training sessions.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    showToast(`Candidate ${username} deleted successfully`, 'success');
+                    loadDashboard(); // Reload data
+                } else {
+                    const data = await response.json();
+                    showToast(data.message || 'Failed to delete user', 'error');
+                }
+            } catch (e) {
+                showToast('Error deleting user: ' + e.message, 'error');
+            }
+        }
+
+        async function deleteSession(sessionId) {
+            if (!confirm('Are you sure you want to delete this session? This cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/sessions/${sessionId}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    showToast('Session deleted successfully', 'success');
+                    loadDashboard(); // Reload table (loadDashboard calls loadSessions)
+                } else {
+                    const data = await response.json();
+                    showToast(data.message || 'Failed to delete session', 'error');
+                }
+            } catch (e) {
+                showToast('Error deleting session: ' + e.message, 'error');
+            }
+        }
+
+        function toggleAllSessions(source) {
+            const checkboxes = document.querySelectorAll('.session-checkbox');
+            for (const checkbox of checkboxes) {
+                checkbox.checked = source.checked;
+            }
+            updateBulkDeleteButton();
+        }
+
+        function updateBulkDeleteButton() {
+            const checkboxes = document.querySelectorAll('.session-checkbox:checked');
+            const btn = document.getElementById('bulk-delete-btn');
+            const info = document.getElementById('selection-info');
+            
+            if (checkboxes.length > 0) {
+                btn.classList.remove('hidden');
+                info.textContent = `${checkboxes.length} selected`;
+            } else {
+                btn.classList.add('hidden');
+                info.textContent = '';
+            }
+        }
+
+        async function deleteSelectedSessions() {
+            const checkboxes = document.querySelectorAll('.session-checkbox:checked');
+            const ids = Array.from(checkboxes).map(cb => parseInt(cb.value));
+            
+            if (ids.length === 0) return;
+            
+            if (!confirm(`Are you sure you want to delete ${ids.length} sessions? This cannot be undone.`)) {
+                return;
+            }
+            
+            const btn = document.getElementById('bulk-delete-btn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '⏳ Deleting...';
+            btn.disabled = true;
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/admin/sessions/bulk-delete`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ session_ids: ids }),
+                    credentials: 'include'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    showToast(`Deleted ${data.count} sessions successfully`, 'success');
+                    loadDashboard(); // Reload table
+                    document.getElementById('select-all-sessions').checked = false;
+                    document.getElementById('selection-info').textContent = '';
+                    btn.classList.add('hidden');
+                } else {
+                    const data = await response.json();
+                    showToast(data.message || 'Failed to delete sessions', 'error');
+                }
+            } catch (e) {
+                showToast('Error deleting sessions: ' + e.message, 'error');
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>

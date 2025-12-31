@@ -1,0 +1,36 @@
+services:
+  # Main web service
+  - type: web
+    name: ahl-sales-trainer
+    env: python
+    region: oregon  # Change to 'singapore' if deploying in Asia
+    plan: free  # Change to "starter" for $7/month always-on service
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120"
+    healthCheckPath: /api/health
+    
+    # Auto-generated environment variables
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.6"
+      
+      - key: PORT
+        generateValue: true
+      
+      # These will be set manually in Render dashboard
+      # - SECRET_KEY (generate with: python -c "import secrets; print(secrets.token_hex(32))")
+      # - OPENROUTER_API_KEY
+      # - OPENAI_API_KEY
+      # - PINECONE_API_KEY
+      # - PINECONE_INDEX_HOST
+      
+      - key: DATABASE_PATH
+        value: /opt/render/project/src/data/sales_trainer.db
+
+# Note: This configuration uses the FREE tier by default
+# To upgrade to Starter ($7/month):
+# 1. Change plan: free → plan: starter
+# 2. Add persistent disk in Render dashboard:
+#    - Name: data
+#    - Mount Path: /opt/render/project/src/data
+#    - Size: 1 GB
