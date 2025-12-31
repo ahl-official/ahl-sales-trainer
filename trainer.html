@@ -825,6 +825,12 @@
                 return;
             }
             
+            // CRITICAL FIX: Stop recognition while AI speaks to prevent self-hearing (audio loopback)
+            stopListening();
+            sessionState.currentTranscript = '';
+            const liveDisplay = document.getElementById('live-transcript');
+            if (liveDisplay) liveDisplay.textContent = '';
+            
             sessionState.isAISpeaking = true;
             updateStatus('AI Speaking...', 'bg-green-500');
             
@@ -838,20 +844,6 @@
             utterance.onend = () => {
                 sessionState.isAISpeaking = false;
                 if (onComplete) onComplete();
-                // We handle startListening in the processUserInput flow now, 
-                // but for initial question or other cases, we might still need it?
-                // Actually, processUserInput flow handles re-enabling listening.
-                // However, for the initial question startTrainingSession, we still rely on this or need to update it.
-                // Let's keep the original logic for safety but guard it.
-                if (sessionState.isActive && !sessionState.isPaused && !sessionState.hasEnded && !sessionState.aiPending) {
-                     // Only auto-start listening if not in the middle of a complex flow
-                     // The complex flow sets aiPending=true, so this check helps.
-                     // But wait, aiPending is false when speaking next question.
-                     // Let's just rely on the caller to start listening if they want, 
-                     // OR keep this as a fallback.
-                     // Better: startListening() is idempotent-ish.
-                     // But if we have chained speeches, we don't want to start listening in between.
-                }
             };
             
             utterance.onerror = () => {
