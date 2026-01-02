@@ -162,20 +162,22 @@ def build_enhanced_report_html(db, session_id: int) -> str:
         """
 
     table_html = """
-      <table class='w-full text-left mt-6 border border-gray-200 rounded'>
+    <div class="overflow-x-auto">
+      <table class='min-w-full text-left mt-6 border border-gray-200 rounded'>
         <thead class='bg-gray-100 text-gray-700'>
           <tr>
-            <th class='p-3 text-sm font-semibold'>Question</th>
-            <th class='p-3 text-sm font-semibold'>Your Answer</th>
-            <th class='p-3 text-sm font-semibold'>Expected Answer</th>
-            <th class='p-3 text-sm font-semibold'>Source</th>
-            <th class='p-3 text-sm font-semibold text-center'>Score</th>
+            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Question</th>
+            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Your Answer</th>
+            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Expected Answer</th>
+            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Source</th>
+            <th class='p-3 text-sm font-semibold text-center whitespace-nowrap'>Score</th>
           </tr>
         </thead>
         <tbody>
     """ + "".join(rows_html) + """
         </tbody>
       </table>
+    </div>
     """
 
     strengths_html = ''
@@ -258,18 +260,20 @@ def build_candidate_report_html(db, session_id: int) -> str:
     cat = session['category'] if session else '—'
     diff = session['difficulty'] if session else '—'
     table_html = """
-      <table class='w-full text-left mt-4 border border-gray-200 rounded'>
+    <div class="overflow-x-auto">
+      <table class='min-w-full text-left mt-4 border border-gray-200 rounded'>
         <thead class='bg-gray-100 text-gray-700'>
           <tr>
-            <th class='p-3 text-sm font-semibold'>Question</th>
-            <th class='p-3 text-sm font-semibold'>Your Answer</th>
-            <th class='p-3 text-sm font-semibold'>Expected Answer</th>
+            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Question</th>
+            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Your Answer</th>
+            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Expected Answer</th>
           </tr>
         </thead>
         <tbody>
     """ + "".join(rows_html) + """
         </tbody>
       </table>
+    </div>
     """
     html = f"""
       <div class='space-y-4'>

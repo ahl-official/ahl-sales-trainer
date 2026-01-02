@@ -6,6 +6,7 @@
     <title>AHL Sales Trainer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@deepgram/sdk"></script>
     <style>
         body { font-family: 'Inter', sans-serif; }
         .gradient-bg {
@@ -75,21 +76,50 @@
 </head>
 <body class="bg-slate-50 min-h-screen text-slate-800 text-[15px] leading-6 antialiased">
     <header class="bg-white border-b border-gray-200 sticky top-0 z-50 backdrop-blur-md bg-opacity-90">
-        <div class="container mx-auto px-6 py-4 flex justify-between items-center">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl gradient-bg flex items-center justify-center text-xl shadow-lg shadow-indigo-200">🎓</div>
-                <div>
-                    <h1 class="text-xl font-bold tracking-tight text-slate-900">AHL Sales Trainer</h1>
-                    <p class="text-slate-500 text-xs font-medium" id="user-name">Loading...</p>
+        <div class="container mx-auto px-4 md:px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4 md:gap-0">
+            <div class="flex items-center gap-3 w-full md:w-auto justify-between md:justify-start">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl gradient-bg flex items-center justify-center text-xl shadow-lg shadow-indigo-200">🎓</div>
+                    <div>
+                        <h1 class="text-xl font-bold tracking-tight text-slate-900">AHL Sales Trainer</h1>
+                        <p class="text-slate-500 text-xs font-medium" id="user-name">Loading...</p>
+                    </div>
                 </div>
+                <!-- Mobile Logout (visible on small screens) -->
+                <button onclick="document.getElementById('logout-btn').click()" class="md:hidden p-2 text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-lg transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                </button>
             </div>
-            <button id="logout-btn" class="px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-lg transition-colors">Sign Out</button>
+            <button id="logout-btn" class="hidden md:block px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-lg transition-colors">Sign Out</button>
         </div>
     </header>
 
-    <main class="container mx-auto p-6 max-w-5xl">
+    <main class="container mx-auto p-4 md:p-6 max-w-5xl">
         <!-- Category Selection Screen -->
         <div id="category-selection">
+            <!-- Welcome Video Section -->
+            <div id="welcome-video-section" class="mb-12 hidden">
+                <div class="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden max-w-4xl mx-auto transform hover:scale-[1.01] transition-transform duration-300">
+                    <div class="p-6 md:p-8 bg-gradient-to-r from-indigo-50 to-white border-b border-gray-100">
+                        <div class="flex items-center gap-3 mb-2">
+                            <span class="px-3 py-1 bg-indigo-100 text-indigo-700 rounded-full text-xs font-bold uppercase tracking-wide">Get Started</span>
+                            <h2 class="text-2xl font-bold text-slate-900">Welcome to Your Training</h2>
+                        </div>
+                        <p class="text-slate-600 max-w-2xl">Watch this quick guide to understand how to maximize your learning experience with the AHL Sales Trainer.</p>
+                    </div>
+                    <div class="aspect-w-16 aspect-h-9 w-full bg-slate-900 relative group">
+                        <iframe 
+                            src="https://www.youtube.com/embed/BApeW08JjV0" 
+                            title="AHL Sales Trainer Guide"
+                            class="w-full h-[300px] md:h-[500px]"
+                            frameborder="0" 
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                            allowfullscreen>
+                        </iframe>
+                    </div>
+                </div>
+            </div>
+
             <div class="text-center mb-10">
                 <h2 class="text-3xl font-bold text-slate-900 tracking-tight mb-2">Select Training Module</h2>
                 <p class="text-slate-500">Choose a category to begin your roleplay session</p>
@@ -315,6 +345,10 @@
             timerInterval: null,
             recognition: null,
             recognitionActive: false,
+            deepgramSocket: null,
+            mediaRecorder: null,
+            mediaStream: null,
+            deepgramKeepAlive: null,
             currentQuestion: null,
             lastAIMessage: '',
             currentTranscript: '',
@@ -395,7 +429,9 @@
                 });
                 
                 document.getElementById('categories-loading').classList.add('hidden');
-                grid.classList.remove('hidden');
+                document.getElementById('categories-grid').classList.remove('hidden');
+                const videoSection = document.getElementById('welcome-video-section');
+                if (videoSection) videoSection.classList.remove('hidden');
             } catch (error) {
                 console.error('Error loading categories:', error);
                 alert('Failed to load categories. Please refresh the page.');
@@ -554,35 +590,85 @@
             }
         });
         
-        function initializeSpeechRecognition() {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            sessionState.recognition = new SpeechRecognition();
-            sessionState.recognition.continuous = true;
-            sessionState.recognition.interimResults = true;
-            sessionState.recognition.lang = 'en-US';
-            if ('maxAlternatives' in sessionState.recognition) {
-                sessionState.recognition.maxAlternatives = 1;
+        async function getDeepgramToken() {
+            try {
+                const res = await fetch(`${API_BASE}/api/deepgram-token`, { credentials: 'include' });
+                const data = await res.json();
+                if (data.key) return data.key;
+                throw new Error(data.error || 'No key');
+            } catch (e) {
+                console.error('Deepgram token error:', e);
+                return null;
             }
+        }
+
+        async function initializeDeepgram() {
+            if (sessionState.deepgramSocket && (sessionState.deepgramSocket.readyState === 0 || sessionState.deepgramSocket.readyState === 1)) return;
+
+            const key = await getDeepgramToken();
+            if (!key) {
+                showToast('Failed to connect to speech service', 'error');
+                return;
+            }
+
+            const socket = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true', ['token', key]);
             
-            sessionState.recognition.onresult = handleSpeechResult;
-            
-            sessionState.recognition.onend = () => {
-                sessionState.recognitionActive = false;
-                if (sessionState.isActive && !sessionState.isPaused && !sessionState.hasEnded && !sessionState.aiPending && !sessionState.isAISpeaking) {
-                    startListening();
+            socket.onopen = () => {
+                console.log('Deepgram connected');
+                if (sessionState.deepgramKeepAlive) clearInterval(sessionState.deepgramKeepAlive);
+                sessionState.deepgramKeepAlive = setInterval(() => {
+                    if (socket.readyState === 1) socket.send(JSON.stringify({ type: 'KeepAlive' }));
+                }, 3000);
+            };
+
+            socket.onmessage = (message) => {
+                if (!sessionState.isActive || sessionState.isPaused || sessionState.isAISpeaking) return;
+                
+                const data = JSON.parse(message.data);
+                if (data.channel && data.channel.alternatives && data.channel.alternatives[0]) {
+                    const transcript = data.channel.alternatives[0].transcript;
+                    if (!transcript) return;
+
+                    const isFinal = data.is_final;
+                    
+                    if (sessionState.speechTimeout) clearTimeout(sessionState.speechTimeout);
+
+                    const liveDisplay = document.getElementById('live-transcript');
+                    
+                    if (isFinal) {
+                        sessionState.currentTranscript += ' ' + transcript;
+                    }
+
+                    let fullDisplay = sessionState.currentTranscript;
+                    if (!isFinal) fullDisplay += ' ' + transcript;
+                    
+                    if (liveDisplay) liveDisplay.textContent = fullDisplay.slice(-100);
+
+                    // Silence detection (2s)
+                    sessionState.speechTimeout = setTimeout(() => {
+                        const fullText = fullDisplay.trim();
+                        if (fullText) {
+                             processUserInput(fullText);
+                        }
+                        sessionState.currentTranscript = ''; 
+                    }, 2000);
                 }
             };
-            
-            sessionState.recognition.onerror = (event) => {
-                console.error('Speech recognition error', event.error);
-                sessionState.recognitionActive = false;
-                // Don't auto-restart on not-allowed or similar fatal errors
-                if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-                     showToast('Microphone access denied or not available.', 'error');
-                     return;
-                }
-                // Ignore no-speech, just restart
+
+            socket.onclose = () => {
+                console.log('Deepgram closed');
+                sessionState.deepgramSocket = null;
             };
+
+            socket.onerror = (e) => {
+                console.error('Deepgram error', e);
+            };
+
+            sessionState.deepgramSocket = socket;
+        }
+
+        function initializeSpeechRecognition() {
+            initializeDeepgram();
         }
 
         function startCountdown(seconds, onComplete) {
@@ -606,62 +692,71 @@
             }, 1000);
         }
         
-        function handleSpeechResult(event) {
-            if (!sessionState.isActive || sessionState.isPaused || sessionState.isAISpeaking) return;
-            
-            if (sessionState.speechTimeout) {
-                clearTimeout(sessionState.speechTimeout);
-            }
-            
-            let interim = '';
-            let final = sessionState.currentTranscript;
-            
-            for (let i = event.resultIndex; i < event.results.length; i++) {
-                if (event.results[i].isFinal) {
-                    final += event.results[i][0].transcript;
-                } else {
-                    interim += event.results[i][0].transcript;
-                }
-            }
-            
-            sessionState.currentTranscript = final;
-            
-            const liveDisplay = document.getElementById('live-transcript');
-            if (liveDisplay) {
-                liveDisplay.textContent = (final + interim).slice(-100);
-            }
-            
-            sessionState.speechTimeout = setTimeout(() => {
-                const fullText = (sessionState.currentTranscript + interim).trim();
-                if (fullText) {
-                    const lastMsg = sessionState.conversationHistory[sessionState.conversationHistory.length - 1];
-                    const isDup = lastMsg && lastMsg.role === 'user' && normalizeText(lastMsg.content) === normalizeText(fullText);
-                    if (!isDup) {
-                        processUserInput(fullText);
-                    }
-                }
-                sessionState.currentTranscript = '';
-            }, 2000);
+        async function initializeAudio() {
+             if (sessionState.mediaStream) return;
+             try {
+                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                 sessionState.mediaStream = stream;
+             } catch (e) {
+                 console.error('Mic initialization error', e);
+                 showToast('Microphone access denied', 'error');
+             }
         }
-        
-        function startListening() {
+
+        async function startListening() {
             if (sessionState.recognitionActive || !sessionState.isActive || sessionState.hasEnded || sessionState.aiPending || sessionState.isAISpeaking) return;
             try {
-                sessionState.recognition.start();
+                // Ensure Deepgram socket is ready
+                if (!sessionState.deepgramSocket || sessionState.deepgramSocket.readyState !== 1) {
+                    await initializeDeepgram();
+                    let attempts = 0;
+                    while ((!sessionState.deepgramSocket || sessionState.deepgramSocket.readyState !== 1) && attempts < 20) {
+                        await new Promise(r => setTimeout(r, 100));
+                        attempts++;
+                    }
+                }
+                
+                if (!sessionState.deepgramSocket || sessionState.deepgramSocket.readyState !== 1) {
+                    console.error('Deepgram socket not ready');
+                    return;
+                }
+                
+                // Ensure audio stream is ready
+                await initializeAudio();
+                if (!sessionState.mediaStream) return;
+
+                // Reuse or create recorder
+                if (!sessionState.mediaRecorder) {
+                    const mediaRecorder = new MediaRecorder(sessionState.mediaStream); 
+                    sessionState.mediaRecorder = mediaRecorder;
+                    
+                    mediaRecorder.addEventListener('dataavailable', event => {
+                        if (event.data.size > 0 && 
+                            sessionState.deepgramSocket && 
+                            sessionState.deepgramSocket.readyState === 1 &&
+                            sessionState.recognitionActive) { // Gate sending
+                            sessionState.deepgramSocket.send(event.data);
+                        }
+                    });
+                    mediaRecorder.start(250);
+                } else if (sessionState.mediaRecorder.state === 'paused') {
+                    sessionState.mediaRecorder.resume();
+                }
+
                 sessionState.recognitionActive = true;
                 updateStatus('Listening...', 'bg-blue-500');
             } catch (e) {
-                console.log('Recognition already started');
+                console.log('Error starting listening:', e);
+                showToast('Microphone error', 'error');
             }
         }
         
         function stopListening() {
-            if (sessionState.recognition && sessionState.recognitionActive) {
-                try {
-                    sessionState.recognition.stop();
-                } catch (e) {}
-                sessionState.recognitionActive = false;
+            if (sessionState.mediaRecorder && sessionState.mediaRecorder.state === 'recording') {
+                sessionState.mediaRecorder.pause();
             }
+            // Do NOT stop the tracks here, to allow fast resume
+            sessionState.recognitionActive = false;
         }
         
         async function processUserInput(text) {
@@ -841,7 +936,7 @@
             utterance.pitch = 1.05;
             if (selectedVoice) utterance.voice = selectedVoice;
             
-            utterance.onend = () => {
+            utterance.onend = () => {   
                 sessionState.isAISpeaking = false;
                 if (onComplete) onComplete();
             };
@@ -987,6 +1082,25 @@
             sessionState.isActive = false;
             sessionState.hasEnded = true;
             stopListening();
+            
+            // Cleanup audio
+            if (sessionState.mediaRecorder) {
+                if (sessionState.mediaRecorder.state !== 'inactive') sessionState.mediaRecorder.stop();
+                sessionState.mediaRecorder = null;
+            }
+            if (sessionState.mediaStream) {
+                sessionState.mediaStream.getTracks().forEach(t => t.stop());
+                sessionState.mediaStream = null;
+            }
+            if (sessionState.deepgramSocket) {
+                sessionState.deepgramSocket.close();
+                sessionState.deepgramSocket = null;
+            }
+            if (sessionState.deepgramKeepAlive) {
+                clearInterval(sessionState.deepgramKeepAlive);
+                sessionState.deepgramKeepAlive = null;
+            }
+            
             synthesis.cancel();
             
             if (sessionState.timerInterval) {
