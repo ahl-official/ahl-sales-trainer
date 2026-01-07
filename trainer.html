@@ -4,6 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AHL Sales Trainer</title>
+    <script>
+        (function(){
+            var origWarn = console.warn;
+            console.warn = function(){
+                var msg = arguments && arguments[0] ? String(arguments[0]) : '';
+                if (msg.indexOf('cdn.tailwindcss.com should not be used in production') !== -1) return;
+                return origWarn.apply(console, arguments);
+            };
+        })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@deepgram/sdk"></script>
@@ -86,7 +96,7 @@
                     </div>
                 </div>
                 <!-- Mobile Logout (visible on small screens) -->
-                <button onclick="document.getElementById('logout-btn').click()" class="md:hidden p-2 text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-lg transition-colors">
+                <button onclick="document.getElementById('logout-btn').click()" class="md:hidden p-2 text-slate-600 hover:text-red-600 bg-slate-100 hover:bg-red-50 rounded-lg transition-colors" aria-label="Sign Out" title="Sign Out">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
                 </button>
             </div>
@@ -112,11 +122,29 @@
                             src="https://www.youtube.com/embed/BApeW08JjV0" 
                             title="AHL Sales Trainer Guide"
                             class="w-full h-[300px] md:h-[500px]"
-                            frameborder="0" 
                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
                             allowfullscreen>
                         </iframe>
                     </div>
+                    <div class="flex justify-center p-4 bg-white border-t border-gray-100">
+                        <button onclick="markWelcomeWatched()" class="px-6 py-2 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 transition-colors flex items-center gap-2 shadow-lg shadow-emerald-100">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                            I've Watched This Guide
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Onboarding Checklist -->
+            <div id="onboarding-checklist" class="max-w-4xl mx-auto mb-10 bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hidden">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <span>🚀</span> Getting Started
+                    </h3>
+                    <span id="progress-percent" class="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md">0% Complete</span>
+                </div>
+                <div id="checklist-items" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Populated by JS -->
                 </div>
             </div>
 
@@ -142,16 +170,17 @@
                         Back to Modules
                     </button>
                     
-                    <h2 class="text-2xl font-bold text-slate-900 mb-8 tracking-tight" id="selected-category-title"></h2>
+                    <h2 class="text-2xl font-bold text-slate-900 mb-8 tracking-tight" id="selected-category-title" aria-live="polite">Selected Module</h2>
                     
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                         <div>
-                            <label class="block text-sm font-semibold text-slate-700 mb-2">Difficulty Level</label>
+                        <label for="difficulty-level" class="block text-sm font-semibold text-slate-700 mb-2">Difficulty Level</label>
                             <div class="relative">
                                 <select id="difficulty-level" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all appearance-none outline-none">
                                     <option value="trial" selected>Trial</option>
                                     <option value="basics">Basics</option>
                                     <option value="field-ready">Field Ready</option>
+                                    <option value="adaptive">Adaptive (Auto-adjust)</option>
                                 </select>
                                 <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-500">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -160,7 +189,21 @@
                         </div>
                         
                         <div>
-                            <label class="block text-sm font-semibold text-slate-700 mb-2">Session Duration</label>
+                        <label for="training-mode" class="block text-sm font-semibold text-slate-700 mb-2">Training Mode</label>
+                            <div class="relative">
+                                <select id="training-mode" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all appearance-none outline-none">
+                                    <option value="standard" selected>Standard (Timed)</option>
+                                    <option value="practice">Practice (Untimed)</option>
+                                    <option value="exam">Certification Exam</option>
+                                </select>
+                                <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-500">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label for="session-duration" class="block text-sm font-semibold text-slate-700 mb-2">Session Duration</label>
                             <div class="relative">
                                 <select id="session-duration" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all appearance-none outline-none">
                                     <option value="5">5 minutes</option>
@@ -173,6 +216,13 @@
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                    
+                    <div id="multi-turn-tip" class="hidden mb-6 p-3 bg-blue-50 text-blue-800 text-sm rounded-lg border border-blue-100 flex items-start gap-2">
+                        <span class="text-lg">ℹ️</span>
+                        <div>
+                            <strong>Multi-turn Scenarios Enabled:</strong> You will face chained questions where the customer remembers previous context. Be ready for follow-up objections!
                         </div>
                     </div>
                     
@@ -200,44 +250,56 @@
                     <div class="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-lg border border-slate-100">
                         <span class="text-xs font-bold text-slate-500 uppercase tracking-wider">Time</span>
                         <span id="session-timer" class="text-xl font-mono font-bold text-indigo-600">10:00</span>
+                        <span id="exam-badge" class="hidden px-2 py-1 bg-red-100 text-red-700 text-xs font-bold uppercase rounded border border-red-200 ml-2">Exam Mode</span>
                     </div>
                     <div id="status-indicator" class="flex items-center gap-2.5">
+                        <span id="autosave-indicator" class="hidden text-xs text-slate-400 font-medium transition-opacity duration-500">Saved</span>
                         <span class="relative flex h-3 w-3">
                           <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-slate-400 opacity-75"></span>
                           <span class="relative inline-flex rounded-full h-3 w-3 bg-slate-500"></span>
                         </span>
                         <span class="text-sm font-medium text-slate-600">Initializing...</span>
                     </div>
+                    <div id="context-chips" class="hidden md:flex flex-wrap gap-2"></div>
                 </div>
                 
                 <div class="flex gap-3">
-                    <button id="pause-btn" class="px-4 py-2 bg-amber-100 text-amber-700 font-semibold rounded-lg hover:bg-amber-200 transition-colors flex items-center gap-2 text-sm border border-amber-200">
+                    <button id="pause-btn" class="px-4 py-2 bg-amber-100 text-amber-700 font-semibold rounded-lg hover:bg-amber-200 transition-colors flex items-center gap-2 text-sm border border-amber-200" aria-label="Pause session">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                         Pause
                     </button>
-                    <button id="stop-btn" class="px-4 py-2 bg-red-50 text-red-600 font-semibold rounded-lg hover:bg-red-100 transition-colors flex items-center gap-2 text-sm border border-red-200">
+                    <button id="stop-btn" class="px-4 py-2 bg-red-50 text-red-600 font-semibold rounded-lg hover:bg-red-100 transition-colors flex items-center gap-2 text-sm border border-red-200" aria-label="End session">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0zM9 10a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H9a1 1 0 01-1-1v-4z"/></svg>
                         End Session
                     </button>
                 </div>
             </div>
             
-            <div id="live-transcript" class="mb-4 text-center text-slate-400 text-sm italic min-h-[1.5rem] transition-all font-medium"></div>
+            <div class="flex flex-col items-center justify-center mb-4 min-h-[3rem]">
+                <div id="mic-visualizer" class="flex gap-1 h-8 items-end mb-2 opacity-50 transition-opacity">
+                    <div class="w-1 bg-indigo-400 rounded-full transition-all duration-75 h-2"></div>
+                    <div class="w-1 bg-indigo-500 rounded-full transition-all duration-75 h-2"></div>
+                    <div class="w-1 bg-indigo-600 rounded-full transition-all duration-75 h-2"></div>
+                    <div class="w-1 bg-indigo-500 rounded-full transition-all duration-75 h-2"></div>
+                    <div class="w-1 bg-indigo-400 rounded-full transition-all duration-75 h-2"></div>
+                </div>
+                <div id="live-transcript" class="text-center text-slate-400 text-sm italic font-medium"></div>
+            </div>
 
-            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-6 flex flex-col space-y-4 min-h-[60vh] max-h-[70vh] overflow-y-auto scroll-smooth" id="chat-container"></div>
+            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-6 flex flex-col space-y-4 min-h-[60vh] max-h-[70vh] overflow-y-auto scroll-smooth" id="chat-container" role="log" aria-live="polite" aria-label="Conversation history"></div>
             
             <div class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 md:static md:bg-transparent md:border-0 md:p-0 z-50">
                 <div class="flex justify-center items-center gap-3 max-w-4xl mx-auto">
-                    <button id="mute-btn" class="p-3 bg-white border border-gray-200 text-slate-600 rounded-xl hover:bg-gray-50 hover:text-slate-900 transition shadow-sm" title="Mute AI">
+                    <button id="mute-btn" class="p-3 bg-white border border-gray-200 text-slate-600 rounded-xl hover:bg-gray-50 hover:text-slate-900 transition shadow-sm" title="Mute AI" aria-label="Mute AI voice">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" clip-rule="evenodd"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/></svg>
                     </button>
                     
-                    <button id="done-speaking-btn" class="flex-1 max-w-sm py-3.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 transform active:scale-95">
+                    <button id="done-speaking-btn" class="flex-1 max-w-sm py-3.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 transform active:scale-95" aria-label="I am done speaking">
                         <span class="text-xl">🎙️</span>
                         <span>I'm Done Speaking</span>
                     </button>
                     
-                    <button id="repeat-btn" class="p-3 bg-white border border-gray-200 text-slate-600 rounded-xl hover:bg-gray-50 hover:text-indigo-600 transition shadow-sm" title="Repeat Last">
+                    <button id="repeat-btn" class="p-3 bg-white border border-gray-200 text-slate-600 rounded-xl hover:bg-gray-50 hover:text-indigo-600 transition shadow-sm" title="Repeat Last" aria-label="Repeat last message">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     </button>
                 </div>
@@ -258,10 +320,6 @@
                 <div id="report-content" class="prose prose-slate max-w-none"></div>
                 
                 <div class="mt-10 flex flex-col sm:flex-row justify-center gap-4">
-                    <button id="export-pdf-btn" class="px-6 py-3 bg-white border border-gray-200 text-slate-700 font-semibold rounded-xl hover:bg-gray-50 transition shadow-sm flex items-center justify-center gap-2">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                        Download PDF
-                    </button>
                     <button id="new-session-btn" class="px-8 py-3 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 transition shadow-lg shadow-indigo-200 flex items-center justify-center gap-2">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                         Start New Session
@@ -271,948 +329,27 @@
         </div>
     </main>
 
+    <div id="resume-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 animate-fade-in">
+            <div class="text-center mb-6">
+                <div class="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                    🔄
+                </div>
+                <h3 class="text-xl font-bold text-slate-900">Resume Session?</h3>
+                <p class="text-slate-500 mt-2 text-sm">We found an unfinished <span id="resume-category" class="font-bold"></span> session from <span id="resume-date" class="font-medium text-slate-700"></span>.</p>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="discardSession()" class="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 font-medium rounded-xl hover:bg-slate-50 transition-colors">
+                    Start New
+                </button>
+                <button onclick="resumeSession()" class="flex-1 px-4 py-2.5 bg-indigo-600 text-white font-medium rounded-xl hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200">
+                    Resume
+                </button>
+            </div>
+        </div>
+    </div>
+
     <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2"></div>
-    <script>
-        // Toast System
-        function showToast(message, type = 'info') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            
-            let bgClass = 'bg-gray-800';
-            if (type === 'success') bgClass = 'bg-green-600';
-            if (type === 'error') bgClass = 'bg-red-600';
-            if (type === 'warning') bgClass = 'bg-yellow-600';
-            
-            toast.className = `${bgClass} text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 translate-y-full opacity-0 flex items-center gap-2`;
-            toast.innerHTML = `
-                <span>${message}</span>
-                <button onclick="this.parentElement.remove()" class="ml-4 text-white hover:text-gray-200">&times;</button>
-            `;
-            
-            container.appendChild(toast);
-            
-            requestAnimationFrame(() => toast.classList.remove('translate-y-full', 'opacity-0'));
-            setTimeout(() => {
-                toast.classList.add('opacity-0', 'translate-y-2');
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-
-        // Keyboard Shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
-
-            // Space to Pause/Resume
-            if (e.code === 'Space') {
-                const pauseBtn = document.getElementById('pause-btn');
-                const sessionDiv = document.getElementById('training-session');
-                if (pauseBtn && !sessionDiv.classList.contains('hidden')) {
-                    e.preventDefault();
-                    pauseBtn.click();
-                }
-            }
-            
-            // M to Mute
-            if (e.key.toLowerCase() === 'm') {
-                const muteBtn = document.getElementById('mute-btn');
-                const sessionDiv = document.getElementById('training-session');
-                if (muteBtn && !sessionDiv.classList.contains('hidden')) {
-                    muteBtn.click();
-                }
-            }
-        });
-
-        const API_BASE = '';
-        
-        // Check authentication
-        const user = JSON.parse(localStorage.getItem('ahl_user') || '{}');
-        if (!user.id || user.role === 'admin') {
-            window.location.href = 'login.html';
-        }
-        
-        document.getElementById('user-name').textContent = `Welcome, ${user.name}!`;
-        
-        // Session state
-        const sessionState = {
-            selectedCategory: null,
-            sessionId: null,
-            isActive: false,
-            isPaused: false,
-            isAISpeaking: false,
-            aiPending: false,
-            hasEnded: false,
-            timeRemaining: 0,
-            timerInterval: null,
-            recognition: null,
-            recognitionActive: false,
-            deepgramSocket: null,
-            mediaRecorder: null,
-            mediaStream: null,
-            deepgramKeepAlive: null,
-            currentQuestion: null,
-            lastAIMessage: '',
-            currentTranscript: '',
-            speechTimeout: null,
-            isMuted: false,
-            currentUtterance: null,
-            difficulty: 'basic',
-            duration: 10,
-            conversationHistory: []
-        };
-        
-        const synthesis = window.speechSynthesis;
-        let selectedVoice = null;
-        function normalizeText(t) { return (t || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
-        function enforceQuestion(text) {
-            let t = (text || '').trim();
-            const qm = t.indexOf('?');
-            if (qm !== -1) {
-                t = t.slice(0, qm + 1);
-            } else {
-                t = t.replace(/[\s\.\!]+$/g, '');
-                if (t.length) t = t + '?';
-            }
-            return t;
-        }
-        function pickVoice() {
-            const voices = synthesis.getVoices() || [];
-            const preferred = voices.find(v => /en(-|_)US/i.test(v.lang) && /Samantha|Karen|Google US English|Alex/i.test(v.name)) 
-                || voices.find(v => /en(-|_)US/i.test(v.lang))
-                || voices[0] || null;
-            selectedVoice = preferred;
-        }
-        synthesis.onvoiceschanged = () => { pickVoice(); };
-        pickVoice();
-        
-        // Logout
-        document.getElementById('logout-btn').addEventListener('click', async () => {
-            await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'include', keepalive: true });
-            localStorage.removeItem('ahl_user');
-            window.location.href = 'login.html';
-        });
-        
-        // Load categories
-        async function loadCategories() {
-            try {
-                const response = await fetch(`${API_BASE}/api/admin/categories`, { credentials: 'include' });
-                const data = await response.json();
-                
-                const grid = document.getElementById('categories-grid');
-                grid.innerHTML = '';
-                
-                data.categories.forEach(cat => {
-                    const card = document.createElement('div');
-                    card.className = 'category-card bg-white rounded-2xl shadow-sm p-6 border border-gray-200 hover:border-indigo-300 transition-all';
-                    const hasContent = (cat.video_count || 0) > 0;
-                    const badgeClass = hasContent ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-slate-100 text-slate-600 border border-slate-200';
-                    const chunksText = hasContent ? `${cat.chunks} knowledge chunks available` : `No content uploaded yet`;
-                    const btnClass = hasContent 
-                        ? 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200' 
-                        : 'bg-slate-300 cursor-not-allowed';
-                    
-                    card.innerHTML = `
-                        <div class="flex items-start justify-between mb-4">
-                            <h3 class="text-xl font-bold text-slate-900 tracking-tight">${cat.name}</h3>
-                            <span class="px-2.5 py-0.5 ${badgeClass} text-xs font-semibold rounded-md">
-                                ${cat.video_count} video${cat.video_count !== 1 ? 's' : ''}
-                            </span>
-                        </div>
-                        <p class="text-slate-500 text-sm mb-6">${chunksText}</p>
-                        <button class="w-full py-3 ${btnClass} text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2">
-                            <span>Start Training</span>
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
-                        </button>
-                    `;
-                    
-                    card.querySelector('button').addEventListener('click', () => selectCategory(cat.name));
-                    grid.appendChild(card);
-                });
-                
-                document.getElementById('categories-loading').classList.add('hidden');
-                document.getElementById('categories-grid').classList.remove('hidden');
-                const videoSection = document.getElementById('welcome-video-section');
-                if (videoSection) videoSection.classList.remove('hidden');
-            } catch (error) {
-                console.error('Error loading categories:', error);
-                alert('Failed to load categories. Please refresh the page.');
-            }
-        }
-        
-        loadCategories();
-
-        // Check for interrupted session
-        const interruptedSession = localStorage.getItem('ahl_active_session');
-        if (interruptedSession) {
-            try {
-                const sessionData = JSON.parse(interruptedSession);
-                // Simple confirm for now
-                if (confirm(`You have an interrupted session (${sessionData.category}). Would you like to resume?`)) {
-                    resumeSession(sessionData.session_id);
-                } else {
-                    localStorage.removeItem('ahl_active_session');
-                }
-            } catch (e) {
-                console.error('Error parsing session data', e);
-                localStorage.removeItem('ahl_active_session');
-            }
-        }
-
-        async function resumeSession(sessionId) {
-            try {
-                const response = await fetch(`${API_BASE}/api/training/resume/${sessionId}`, {
-                    method: 'POST',
-                    credentials: 'include'
-                });
-                
-                if (!response.ok) {
-                    if (response.status === 404 || response.status === 400) {
-                        localStorage.removeItem('ahl_active_session');
-                        alert('Session no longer valid or already completed.');
-                        return;
-                    }
-                    throw new Error('Failed to resume session');
-                }
-                
-                const data = await response.json();
-                
-                // Restore session state
-                sessionState.sessionId = data.session.id;
-                sessionState.selectedCategory = data.session.category;
-                sessionState.difficulty = data.session.difficulty;
-                sessionState.duration = data.session.duration_minutes;
-                sessionState.timeRemaining = data.session.remaining_seconds;
-                sessionState.isActive = true;
-                
-                // Show training screen
-                document.getElementById('category-selection').classList.add('hidden');
-                document.getElementById('training-config').classList.add('hidden');
-                document.getElementById('training-session').classList.remove('hidden');
-                
-                // Restore chat messages
-                const chatContainer = document.getElementById('chat-container');
-                chatContainer.innerHTML = ''; // Clear defaults
-                
-                // Reset conversation history
-            sessionState.conversationHistory = [];
-            
-            data.messages.forEach(msg => {
-                addMessage(msg.content, msg.role);
-            });
-
-            // Initialize and start (resume)
-                initializeSpeechRecognition();
-                // Don't call startTrainingSession() as it resets timer and state, just start timer and listening
-                startTimer();
-                startListening();
-                
-            } catch (error) {
-                console.error('Error resuming session:', error);
-                alert('Failed to resume session. Starting fresh.');
-                localStorage.removeItem('ahl_active_session');
-            }
-        }
-        
-        function selectCategory(categoryName) {
-            sessionState.selectedCategory = categoryName;
-            document.getElementById('selected-category-title').textContent = categoryName;
-            document.getElementById('category-selection').classList.add('hidden');
-            document.getElementById('training-config').classList.remove('hidden');
-        }
-        
-        document.getElementById('back-to-categories').addEventListener('click', () => {
-            document.getElementById('training-config').classList.add('hidden');
-            document.getElementById('category-selection').classList.remove('hidden');
-        });
-        
-        // Start training session
-        document.getElementById('start-training-btn').addEventListener('click', async () => {
-            sessionState.difficulty = document.getElementById('difficulty-level').value;
-            sessionState.duration = parseInt(document.getElementById('session-duration').value);
-            
-            const startBtn = document.getElementById('start-training-btn');
-            const originalText = startBtn.innerHTML;
-            
-            startBtn.disabled = true;
-            startBtn.innerHTML = '<div class="inline-block animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2"></div> Starting...';
-            
-            // Request microphone access
-            try {
-                await navigator.mediaDevices.getUserMedia({ audio: true });
-            } catch (err) {
-                showToast('Microphone access required. Please allow and try again.', 'error');
-                startBtn.disabled = false;
-                startBtn.innerHTML = originalText;
-                return;
-            }
-            
-            // Create session in database
-            try {
-                const response = await fetch(`${API_BASE}/api/training/start`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        category: sessionState.selectedCategory,
-                        difficulty: sessionState.difficulty,
-                        duration_minutes: sessionState.duration
-                    })
-                });
-                
-                const data = await response.json();
-                sessionState.sessionId = data.session_id;
-                
-                // Save to localStorage
-                localStorage.setItem('ahl_active_session', JSON.stringify({
-                    session_id: data.session_id,
-                    category: sessionState.selectedCategory
-                }));
-                
-                // Show training screen
-                document.getElementById('training-config').classList.add('hidden');
-                document.getElementById('training-session').classList.remove('hidden');
-                
-                showToast('Session started! Good luck.', 'success');
-                
-                // Initialize and start
-                initializeSpeechRecognition();
-                
-                // Start countdown before actual session start
-                startCountdown(3, () => {
-                    startTrainingSession();
-                });
-                
-            } catch (error) {
-                console.error('Error starting session:', error);
-                showToast('Failed to start session. Please try again.', 'error');
-            } finally {
-                startBtn.disabled = false;
-                startBtn.innerHTML = originalText;
-            }
-        });
-        
-        async function getDeepgramToken() {
-            try {
-                const res = await fetch(`${API_BASE}/api/deepgram-token`, { credentials: 'include' });
-                const data = await res.json();
-                if (data.key) return data.key;
-                throw new Error(data.error || 'No key');
-            } catch (e) {
-                console.error('Deepgram token error:', e);
-                return null;
-            }
-        }
-
-        async function initializeDeepgram() {
-            if (sessionState.deepgramSocket && (sessionState.deepgramSocket.readyState === 0 || sessionState.deepgramSocket.readyState === 1)) return;
-
-            const key = await getDeepgramToken();
-            if (!key) {
-                showToast('Failed to connect to speech service', 'error');
-                return;
-            }
-
-            const socket = new WebSocket('wss://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&interim_results=true', ['token', key]);
-            
-            socket.onopen = () => {
-                console.log('Deepgram connected');
-                if (sessionState.deepgramKeepAlive) clearInterval(sessionState.deepgramKeepAlive);
-                sessionState.deepgramKeepAlive = setInterval(() => {
-                    if (socket.readyState === 1) socket.send(JSON.stringify({ type: 'KeepAlive' }));
-                }, 3000);
-            };
-
-            socket.onmessage = (message) => {
-                if (!sessionState.isActive || sessionState.isPaused || sessionState.isAISpeaking) return;
-                
-                const data = JSON.parse(message.data);
-                if (data.channel && data.channel.alternatives && data.channel.alternatives[0]) {
-                    const transcript = data.channel.alternatives[0].transcript;
-                    if (!transcript) return;
-
-                    const isFinal = data.is_final;
-                    
-                    if (sessionState.speechTimeout) clearTimeout(sessionState.speechTimeout);
-
-                    const liveDisplay = document.getElementById('live-transcript');
-                    
-                    if (isFinal) {
-                        sessionState.currentTranscript += ' ' + transcript;
-                    }
-
-                    let fullDisplay = sessionState.currentTranscript;
-                    if (!isFinal) fullDisplay += ' ' + transcript;
-                    
-                    if (liveDisplay) liveDisplay.textContent = fullDisplay.slice(-100);
-
-                    // Silence detection (2s)
-                    sessionState.speechTimeout = setTimeout(() => {
-                        const fullText = fullDisplay.trim();
-                        if (fullText) {
-                             processUserInput(fullText);
-                        }
-                        sessionState.currentTranscript = ''; 
-                    }, 2000);
-                }
-            };
-
-            socket.onclose = () => {
-                console.log('Deepgram closed');
-                sessionState.deepgramSocket = null;
-            };
-
-            socket.onerror = (e) => {
-                console.error('Deepgram error', e);
-            };
-
-            sessionState.deepgramSocket = socket;
-        }
-
-        function initializeSpeechRecognition() {
-            initializeDeepgram();
-        }
-
-        function startCountdown(seconds, onComplete) {
-            // Create countdown overlay
-            const overlay = document.createElement('div');
-            overlay.id = 'countdown-overlay';
-            overlay.className = 'fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50';
-            overlay.innerHTML = `<div class="text-white font-bold" style="font-size: 8rem;">${seconds}</div>`;
-            document.body.appendChild(overlay);
-
-            let count = seconds;
-            const interval = setInterval(() => {
-                count--;
-                if (count > 0) {
-                    overlay.innerHTML = `<div class="text-white font-bold animate-pulse" style="font-size: 8rem;">${count}</div>`;
-                } else {
-                    clearInterval(interval);
-                    document.body.removeChild(overlay);
-                    if (onComplete) onComplete();
-                }
-            }, 1000);
-        }
-        
-        async function initializeAudio() {
-             if (sessionState.mediaStream) return;
-             try {
-                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                 sessionState.mediaStream = stream;
-             } catch (e) {
-                 console.error('Mic initialization error', e);
-                 showToast('Microphone access denied', 'error');
-             }
-        }
-
-        async function startListening() {
-            if (sessionState.recognitionActive || !sessionState.isActive || sessionState.hasEnded || sessionState.aiPending || sessionState.isAISpeaking) return;
-            try {
-                // Ensure Deepgram socket is ready
-                if (!sessionState.deepgramSocket || sessionState.deepgramSocket.readyState !== 1) {
-                    await initializeDeepgram();
-                    let attempts = 0;
-                    while ((!sessionState.deepgramSocket || sessionState.deepgramSocket.readyState !== 1) && attempts < 20) {
-                        await new Promise(r => setTimeout(r, 100));
-                        attempts++;
-                    }
-                }
-                
-                if (!sessionState.deepgramSocket || sessionState.deepgramSocket.readyState !== 1) {
-                    console.error('Deepgram socket not ready');
-                    return;
-                }
-                
-                // Ensure audio stream is ready
-                await initializeAudio();
-                if (!sessionState.mediaStream) return;
-
-                // Reuse or create recorder
-                if (!sessionState.mediaRecorder) {
-                    const mediaRecorder = new MediaRecorder(sessionState.mediaStream); 
-                    sessionState.mediaRecorder = mediaRecorder;
-                    
-                    mediaRecorder.addEventListener('dataavailable', event => {
-                        if (event.data.size > 0 && 
-                            sessionState.deepgramSocket && 
-                            sessionState.deepgramSocket.readyState === 1 &&
-                            sessionState.recognitionActive) { // Gate sending
-                            sessionState.deepgramSocket.send(event.data);
-                        }
-                    });
-                    mediaRecorder.start(250);
-                } else if (sessionState.mediaRecorder.state === 'paused') {
-                    sessionState.mediaRecorder.resume();
-                }
-
-                sessionState.recognitionActive = true;
-                updateStatus('Listening...', 'bg-blue-500');
-            } catch (e) {
-                console.log('Error starting listening:', e);
-                showToast('Microphone error', 'error');
-            }
-        }
-        
-        function stopListening() {
-            if (sessionState.mediaRecorder && sessionState.mediaRecorder.state === 'recording') {
-                sessionState.mediaRecorder.pause();
-            }
-            // Do NOT stop the tracks here, to allow fast resume
-            sessionState.recognitionActive = false;
-        }
-        
-        async function processUserInput(text) {
-            if (!sessionState.isActive || sessionState.hasEnded) return;
-            const normalized = normalizeText(text);
-            if (sessionState.aiPending) return;
-            if (normalizeText(sessionState.lastUserText) === normalized && (Date.now() - sessionState.lastUserAt) < 4000) return;
-            stopListening();
-            addMessage(text, 'user');
-            sessionState.lastUserText = text;
-            sessionState.lastUserAt = Date.now();
-            
-            // 1. Log user message
-            await fetch(`${API_BASE}/api/training/message`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    session_id: sessionState.sessionId,
-                    role: 'user',
-                    content: text,
-                    context_source: 'speech'
-                })
-            });
-            
-            updateStatus('Evaluating...', 'bg-yellow-400');
-            sessionState.aiPending = true;
-
-            try {
-                // 2. Evaluate Answer
-                const feedbackText = await evaluateUserAnswer(text);
-                
-                if (feedbackText && sessionState.isActive && !sessionState.hasEnded) {
-                    addMessage(feedbackText, 'ai');
-                    sessionState.lastAIMessage = feedbackText;
-                    
-                    // Speak feedback and wait for it to finish (approx) or just queue it
-                    await speakAsync(feedbackText);
-                }
-
-                // 3. Get Next Question
-                if (sessionState.isActive && !sessionState.hasEnded) {
-                    updateStatus('Preparing next question...', 'bg-blue-400');
-                    await fetchNextQuestion();
-                }
-
-            } catch (e) {
-                console.error('Error in conversation flow:', e);
-                showToast('Error processing response', 'error');
-            } finally {
-                sessionState.aiPending = false;
-                if (sessionState.isActive && !sessionState.hasEnded && !sessionState.isPaused && !sessionState.isAISpeaking) {
-                     setTimeout(() => startListening(), 500);
-                }
-            }
-        }
-        
-        async function evaluateUserAnswer(userText) {
-            if (!sessionState.currentQuestion) return null;
-            try {
-                const response = await fetch(`${API_BASE}/api/training/evaluate-answer`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        session_id: sessionState.sessionId,
-                        question_id: sessionState.currentQuestion.id,
-                        user_answer: userText
-                    })
-                });
-                const data = await response.json();
-                if (!response.ok) {
-                    console.error('Evaluation failed', data);
-                    return "I couldn't evaluate that properly. Let's move on.";
-                }
-                
-                const evaluation = data.evaluation;
-                
-                // Log system feedback
-                await fetch(`${API_BASE}/api/training/message`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        session_id: sessionState.sessionId,
-                        role: 'system',
-                        content: evaluation.feedback || '',
-                        context_source: 'evaluation',
-                        evaluation_data: evaluation
-                    })
-                });
-                
-                return evaluation.speak_feedback || evaluation.feedback || '';
-            } catch (error) {
-                console.error('Error in evaluation:', error);
-                return "I had trouble checking that answer.";
-            }
-        }
-
-        async function fetchNextQuestion() {
-            try {
-                sessionState.currentQuestion = null;
-                const nextQ = await fetch(`${API_BASE}/api/training/get-next-question`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ session_id: sessionState.sessionId })
-                });
-                const nextData = await nextQ.json();
-                
-                if (!nextQ.ok) {
-                    console.error('Failed to get next question', nextData);
-                    return;
-                }
-                
-                if (nextData.done) {
-                    sessionState.hasEnded = true;
-                    setTimeout(() => endSession(), 500);
-                    return;
-                }
-                
-                sessionState.currentQuestion = nextData.question;
-                const qText = enforceQuestion(nextData.question.question_text);
-                
-                // Add next question to UI
-                addMessage(qText, 'ai');
-                sessionState.lastAIMessage = qText;
-                
-                // Log assistant question
-                await fetch(`${API_BASE}/api/training/message`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        session_id: sessionState.sessionId,
-                        role: 'assistant',
-                        content: qText,
-                        context_source: 'question'
-                    })
-                });
-                
-                // Speak next question
-                await speakAsync(qText);
-                
-            } catch (error) {
-                console.error('Error fetching next question:', error);
-            }
-        }
-        
-        // Helper to wrap speak in a promise (optional, effectively just triggers it)
-        function speakAsync(text) {
-            return new Promise((resolve) => {
-                speak(text, resolve); // Modified speak to accept callback
-            });
-        }
-
-        
-        function speak(text, onComplete) {
-            if (sessionState.isMuted) {
-                if (onComplete) onComplete();
-                return;
-            }
-            
-            // CRITICAL FIX: Stop recognition while AI speaks to prevent self-hearing (audio loopback)
-            stopListening();
-            sessionState.currentTranscript = '';
-            const liveDisplay = document.getElementById('live-transcript');
-            if (liveDisplay) liveDisplay.textContent = '';
-            
-            sessionState.isAISpeaking = true;
-            updateStatus('AI Speaking...', 'bg-green-500');
-            
-            synthesis.cancel();
-            
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.rate = 1.0;
-            utterance.pitch = 1.05;
-            if (selectedVoice) utterance.voice = selectedVoice;
-            
-            utterance.onend = () => {   
-                sessionState.isAISpeaking = false;
-                if (onComplete) onComplete();
-            };
-            
-            utterance.onerror = () => {
-                sessionState.isAISpeaking = false;
-                if (onComplete) onComplete();
-            };
-            
-            sessionState.currentUtterance = utterance;
-            synthesis.speak(utterance);
-        }
-        
-        function addMessage(text, sender) {
-            const row = document.createElement('div');
-            const isUser = sender === 'user';
-            
-            // Update history
-            if (sessionState.conversationHistory) {
-                sessionState.conversationHistory.push({
-                    role: isUser ? 'user' : 'assistant',
-                    content: text
-                });
-            }
-            
-            row.className = `flex items-end ${isUser ? 'justify-end' : 'justify-start'} gap-2`;
-            
-            const bubble = document.createElement('div');
-            bubble.className = `chat-bubble ${isUser ? 'chat-bubble-user' : 'chat-bubble-ai'} whitespace-pre-wrap text-sm`;
-            bubble.textContent = text;
-            
-            const time = document.createElement('div');
-            time.className = 'msg-time mt-1';
-            time.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            
-            const side = document.createElement('div');
-            side.className = 'flex flex-col items-center';
-            const avatar = document.createElement('div');
-            avatar.className = `avatar ${isUser ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-700'}`;
-            avatar.textContent = isUser ? '🧑' : '🤖';
-            
-            side.appendChild(avatar);
-            side.appendChild(time);
-            
-            if (isUser) {
-                row.appendChild(bubble);
-                row.appendChild(side);
-            } else {
-                row.appendChild(side);
-                row.appendChild(bubble);
-            }
-            
-            const container = document.getElementById('chat-container');
-            container.appendChild(row);
-            container.scrollTop = container.scrollHeight;
-        }
-        
-        function updateStatus(text, colorClass) {
-            const indicator = document.getElementById('status-indicator');
-            const dot = indicator.querySelector('.relative.inline-flex.rounded-full');
-            const label = indicator.querySelector('span.text-sm');
-            if (dot) {
-                dot.className = `relative inline-flex rounded-full h-3 w-3 ${colorClass}`;
-            }
-            if (label) {
-                label.textContent = text;
-            }
-        }
-        
-        function startTimer() {
-            updateTimerDisplay();
-            
-            if (sessionState.timerInterval) clearInterval(sessionState.timerInterval);
-            
-            sessionState.timerInterval = setInterval(() => {
-                if (!sessionState.isPaused && sessionState.isActive) {
-                    sessionState.timeRemaining--;
-                    updateTimerDisplay();
-                    
-                    if (sessionState.timeRemaining <= 0) {
-                        endSession();
-                    }
-                }
-            }, 1000);
-        }
-
-        async function startTrainingSession() {
-            sessionState.isActive = true;
-            sessionState.timeRemaining = sessionState.duration * 60;
-            
-            startTimer();
-            
-            updateStatus('Initializing questions...', 'bg-blue-400');
-            try {
-                const response = await fetch(`${API_BASE}/api/training/get-next-question`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ session_id: sessionState.sessionId })
-                });
-                const data = await response.json();
-                if (!response.ok || data.done) {
-                    showToast('No prepared questions found for this session.', 'error');
-                    endSession();
-                    return;
-                }
-                sessionState.currentQuestion = data.question;
-                const qText = enforceQuestion(data.question.question_text);
-                addMessage(qText, 'ai');
-                sessionState.lastAIMessage = qText;
-                await fetch(`${API_BASE}/api/training/message`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        session_id: sessionState.sessionId,
-                        role: 'assistant',
-                        content: qText,
-                        context_source: 'question'
-                    })
-                });
-                
-                // Speak and then start listening
-                speak(qText, () => {
-                    if (sessionState.isActive && !sessionState.isPaused) {
-                        startListening();
-                    }
-                });
-                
-            } catch (e) {
-                console.error('Failed to start question flow', e);
-                showToast('Failed to load questions for this session.', 'error');
-            }
-        }
-        
-        function updateTimerDisplay() {
-            const minutes = Math.floor(sessionState.timeRemaining / 60);
-            const seconds = sessionState.timeRemaining % 60;
-            document.getElementById('session-timer').textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-        }
-        
-        async function endSession() {
-            sessionState.isActive = false;
-            sessionState.hasEnded = true;
-            stopListening();
-            
-            // Cleanup audio
-            if (sessionState.mediaRecorder) {
-                if (sessionState.mediaRecorder.state !== 'inactive') sessionState.mediaRecorder.stop();
-                sessionState.mediaRecorder = null;
-            }
-            if (sessionState.mediaStream) {
-                sessionState.mediaStream.getTracks().forEach(t => t.stop());
-                sessionState.mediaStream = null;
-            }
-            if (sessionState.deepgramSocket) {
-                sessionState.deepgramSocket.close();
-                sessionState.deepgramSocket = null;
-            }
-            if (sessionState.deepgramKeepAlive) {
-                clearInterval(sessionState.deepgramKeepAlive);
-                sessionState.deepgramKeepAlive = null;
-            }
-            
-            synthesis.cancel();
-            
-            if (sessionState.timerInterval) {
-                clearInterval(sessionState.timerInterval);
-            }
-            
-            // Clear active session from storage
-            localStorage.removeItem('ahl_active_session');
-            
-            // Mark session complete
-            await fetch(`${API_BASE}/api/training/end`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ session_id: sessionState.sessionId })
-            });
-            
-            // Generate report
-            document.getElementById('training-session').classList.add('hidden');
-            document.getElementById('report-screen').classList.remove('hidden');
-            document.getElementById('report-content').innerHTML = '<p class="text-center">🔄 Generating performance report...</p>';
-            
-            try {
-                const resp = await fetch(`${API_BASE}/api/training/report/${sessionState.sessionId}`, {
-                    method: 'GET',
-                    credentials: 'include'
-                });
-                const data = await resp.json();
-                if (!resp.ok) throw new Error(data.error || 'Failed to load report');
-                document.getElementById('report-content').innerHTML = data.report_html;
-            } catch (e) {
-                document.getElementById('report-content').innerHTML = '<p class="text-center text-red-500">Failed to load report.</p>';
-            }
-        }
-        
-        // Report generation is now fully backend-driven via GET /api/training/report/{session_id}
-        
-        // Control buttons
-        document.getElementById('pause-btn').addEventListener('click', () => {
-            sessionState.isPaused = !sessionState.isPaused;
-            document.getElementById('pause-btn').innerHTML = sessionState.isPaused ? '▶️ Resume' : '⏸ Pause';
-            
-            if (sessionState.isPaused) {
-                synthesis.cancel();
-                stopListening();
-                updateStatus('Paused', 'bg-yellow-500');
-            } else {
-                updateStatus('Resuming...', 'bg-blue-400');
-                setTimeout(() => {
-                    if (!sessionState.isAISpeaking) startListening();
-                }, 500);
-            }
-        });
-        
-        document.getElementById('stop-btn').addEventListener('click', () => {
-            if (confirm('End session now and generate report?')) {
-                endSession();
-            }
-        });
-        
-        document.getElementById('done-speaking-btn').addEventListener('click', () => {
-            if (sessionState.speechTimeout) {
-                clearTimeout(sessionState.speechTimeout);
-            }
-            const text = sessionState.currentTranscript.trim();
-            if (text) {
-                processUserInput(text);
-            }
-            sessionState.currentTranscript = '';
-        });
-        
-        document.getElementById('mute-btn').addEventListener('click', () => {
-            sessionState.isMuted = !sessionState.isMuted;
-            document.getElementById('mute-btn').textContent = sessionState.isMuted ? '🔊 Unmute AI' : '🔇 Mute AI';
-            if (sessionState.isMuted) synthesis.cancel();
-        });
-        
-        document.getElementById('repeat-btn').addEventListener('click', () => {
-            if (sessionState.lastAIMessage && !sessionState.isAISpeaking) {
-                speak(sessionState.lastAIMessage);
-            }
-        });
-
-        document.getElementById('export-pdf-btn').addEventListener('click', async () => {
-            if (!sessionState.sessionId) return;
-            try {
-                const resp = await fetch(`${API_BASE}/api/sessions/${sessionState.sessionId}/export/pdf`, {
-                    method: 'GET',
-                    credentials: 'include'
-                });
-                if (!resp.ok) {
-                    showToast('Failed to download PDF.', 'error');
-                    return;
-                }
-                const blob = await resp.blob();
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `session_report_${sessionState.sessionId}.pdf`;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(url);
-            } catch (e) {
-                console.error('PDF download failed', e);
-                showToast('Error downloading PDF.', 'error');
-            }
-        });
-
-        document.getElementById('new-session-btn').addEventListener('click', () => {
-            window.location.reload();
-        });
-    </script>
+    <script src="static/js/trainer.js?v=1.0.2"></script>
 </body>
 </html>

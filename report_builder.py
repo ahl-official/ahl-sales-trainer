@@ -33,11 +33,7 @@ def build_enhanced_report_html(db, session_id: int) -> str:
     # Since there is no dedicated fetch, we infer by reading all from table via existing methods
     # Reuse get_session_questions and then for each question, attempt to find an evaluation via a simple query
     # Implement a tiny local fetch using database connection
-    conn = db._get_connection()
-    cur = conn.cursor()
-    cur.execute('SELECT * FROM answer_evaluations WHERE session_id = ?', (session_id,))
-    eval_rows = [dict(r) for r in cur.fetchall()]
-    conn.close()
+    eval_rows = db.execute_query('SELECT * FROM answer_evaluations WHERE session_id = ?', (session_id,))
     eval_by_qid: Dict[int, Dict] = {e['question_id']: e for e in eval_rows}
 
     # Compute dimension scores
@@ -98,15 +94,15 @@ def build_enhanced_report_html(db, session_id: int) -> str:
             detail_html += "</div>"
 
         rows_html.append(f"""
-        <tr class='border-t'>
+        <tr class='border-t hover:bg-gray-50'>
           <td class='p-3 align-top text-sm'>
-            <div>{qtext}</div>
+            <div class='font-medium text-gray-900 whitespace-normal break-normal hyphens-auto'>{qtext}</div>
             {detail_html}
           </td>
-          <td class='p-3 align-top text-sm'>{(user_answer or '—')}</td>
-          <td class='p-3 align-top text-sm'>{exp}</td>
-          <td class='p-3 align-top text-sm'>{(src or '—')}</td>
-          <td class='p-3 align-top text-sm text-center'>{(round(overall,1) if isinstance(overall,(int,float)) else '—')}</td>
+          <td class='p-3 align-top text-sm text-gray-700 whitespace-normal break-normal hyphens-auto'>{(user_answer or '—')}</td>
+          <td class='p-3 align-top text-sm text-gray-600 whitespace-normal break-normal hyphens-auto'>{exp}</td>
+          <td class='p-3 align-top text-sm text-gray-500 whitespace-normal break-normal'>{(src or '—')}</td>
+          <td class='p-3 align-top text-sm text-center font-bold text-gray-800'>{(round(overall,1) if isinstance(overall,(int,float)) else '—')}</td>
         </tr>
         """)
 
@@ -162,15 +158,33 @@ def build_enhanced_report_html(db, session_id: int) -> str:
         """
 
     table_html = """
+    <style>
+      .report-table { table-layout: auto; width: 100%; }
+      .report-table th, .report-table td { word-break: normal; white-space: normal; hyphens: auto; }
+      @media (min-width: 1024px) {
+        .report-table colgroup col.col-question { width: 30%; }
+        .report-table colgroup col.col-your { width: 25%; }
+        .report-table colgroup col.col-expected { width: 25%; }
+        .report-table colgroup col.col-source { width: 12%; }
+        .report-table colgroup col.col-score { width: 8%; }
+      }
+    </style>
     <div class="overflow-x-auto">
-      <table class='min-w-full text-left mt-6 border border-gray-200 rounded'>
+      <table class='report-table w-full text-left mt-6 border border-gray-200 rounded'>
+        <colgroup>
+          <col class="col-question" />
+          <col class="col-your" />
+          <col class="col-expected" />
+          <col class="col-source" />
+          <col class="col-score" />
+        </colgroup>
         <thead class='bg-gray-100 text-gray-700'>
           <tr>
-            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Question</th>
-            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Your Answer</th>
-            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Expected Answer</th>
-            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Source</th>
-            <th class='p-3 text-sm font-semibold text-center whitespace-nowrap'>Score</th>
+            <th class='p-3 text-sm font-semibold'>Question</th>
+            <th class='p-3 text-sm font-semibold'>Your Answer</th>
+            <th class='p-3 text-sm font-semibold'>Expected Answer</th>
+            <th class='p-3 text-sm font-semibold'>Source</th>
+            <th class='p-3 text-sm font-semibold text-center'>Score</th>
           </tr>
         </thead>
         <tbody>
@@ -260,13 +274,27 @@ def build_candidate_report_html(db, session_id: int) -> str:
     cat = session['category'] if session else '—'
     diff = session['difficulty'] if session else '—'
     table_html = """
+    <style>
+      .report-table { table-layout: auto; width: 100%; }
+      .report-table th, .report-table td { word-break: normal; white-space: normal; hyphens: auto; }
+      @media (min-width: 1024px) {
+        .report-table colgroup col.col-question { width: 34%; }
+        .report-table colgroup col.col-your { width: 33%; }
+        .report-table colgroup col.col-expected { width: 33%; }
+      }
+    </style>
     <div class="overflow-x-auto">
-      <table class='min-w-full text-left mt-4 border border-gray-200 rounded'>
+      <table class='report-table w-full text-left mt-4 border border-gray-200 rounded'>
+        <colgroup>
+          <col class="col-question" />
+          <col class="col-your" />
+          <col class="col-expected" />
+        </colgroup>
         <thead class='bg-gray-100 text-gray-700'>
           <tr>
-            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Question</th>
-            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Your Answer</th>
-            <th class='p-3 text-sm font-semibold whitespace-nowrap'>Expected Answer</th>
+            <th class='p-3 text-sm font-semibold'>Question</th>
+            <th class='p-3 text-sm font-semibold'>Your Answer</th>
+            <th class='p-3 text-sm font-semibold'>Expected Answer</th>
           </tr>
         </thead>
         <tbody>

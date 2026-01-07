@@ -7,7 +7,7 @@ import sqlite3
 import hashlib
 import bcrypt
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any
 import json
 from config_logging import get_logger
 
@@ -28,6 +28,23 @@ class Database:
         conn.row_factory = sqlite3.Row
         return conn
     
+    def execute_query(self, query: str, params: tuple = ()) -> List[dict]:
+        """Execute a query and return results as a list of dictionaries"""
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            if query.strip().upper().startswith('SELECT'):
+                return [dict(row) for row in cursor.fetchall()]
+            else:
+                conn.commit()
+                return []
+        except Exception as e:
+            logger.error(f"Query failed: {e}")
+            raise
+        finally:
+            conn.close()
+
     def initialize(self):
         """Initialize database schema"""
         conn = self._get_connection()
@@ -73,6 +90,7 @@ class Database:
                 status TEXT DEFAULT 'active',
                 overall_score REAL,
                 notes TEXT,
+                tags TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         ''')
@@ -100,6 +118,17 @@ class Database:
         except Exception as e:
             logger.error(f"Failed ensuring messages.evaluation_data column: {e}")
         
+        # Ensure sessions.tags column exists for existing databases
+        try:
+            cursor.execute("PRAGMA table_info(sessions)")
+            s_cols = [r[1] for r in cursor.fetchall()]
+            if 'tags' not in s_cols:
+                cursor.execute('ALTER TABLE sessions ADD COLUMN tags TEXT')
+            if 'mode' not in s_cols:
+                cursor.execute("ALTER TABLE sessions ADD COLUMN mode TEXT DEFAULT 'standard'") 
+        except Exception as e:
+            logger.error(f"Failed ensuring sessions columns: {e}")
+        
         # Reports table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS reports (
@@ -108,6 +137,62 @@ class Database:
                 report_html TEXT NOT NULL,
                 generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            )
+        ''')
+
+        # Saved views table (per admin)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS saved_views (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                admin_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                filters_json TEXT NOT NULL,
+                shared INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (admin_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        ''')
+        # Ensure saved_views.shared exists for older DBs
+        try:
+            cursor.execute("PRAGMA table_info(saved_views)")
+            v_cols = [r[1] for r in cursor.fetchall()]
+            if 'shared' not in v_cols:
+                cursor.execute('ALTER TABLE saved_views ADD COLUMN shared INTEGER DEFAULT 0')
+        except Exception as e:
+            logger.error(f"Failed ensuring saved_views.shared column: {e}")
+
+        # User preferences (generic key-value)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS user_preferences (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                pref_key TEXT NOT NULL,
+                pref_value TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, pref_key),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        ''')
+
+        # Session drafts (autosave)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS session_drafts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER UNIQUE NOT NULL,
+                data_json TEXT NOT NULL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+            )
+        ''')
+
+        # System settings (Key-Value)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS system_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                description TEXT,
+                type TEXT DEFAULT 'string',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
 
@@ -209,7 +294,120 @@ class Database:
         conn.close()
         
         logger.info("✅ Database initialized successfully")
+        
+        # Initialize default system settings
+        self.init_default_settings()
     
+    # ========================================================================
+    # SYSTEM SETTINGS
+    # ========================================================================
+
+    def init_default_settings(self):
+        """Initialize default system settings if they don't exist"""
+        defaults = [
+            ('llm_model', 'openai/gpt-4o', 'LLM Model Selection', 'string'),
+            ('generate_source', 'default', 'Question Generation Source (default/rag_only)', 'string'),
+            ('temperature_questions', '0.7', 'Creativity for questions (0.0-1.0)', 'float'),
+            ('temperature_eval', '0.3', 'Creativity for evaluation (0.0-1.0)', 'float'),
+            ('max_tokens_answer', '1000', 'Max tokens for answers', 'int'),
+            ('questions_per_min', '0.6', 'Questions per minute', 'float'),
+            ('min_questions', '7', 'Absolute minimum questions', 'int'),
+            ('max_questions', '25', 'Absolute maximum questions', 'int'),
+            ('passing_score', '8.0', 'Passing score for certification', 'float'),
+            ('rag_top_k', '50', 'RAG Context Window (Top-K)', 'int'),
+            ('rag_relevance_threshold', '0.0', 'Minimum similarity score', 'float'),
+            ('maintenance_mode', 'false', 'Maintenance Mode', 'bool'),
+            ('debug_logging', 'false', 'Verbose Debug Logging', 'bool'),
+            ('global_alert', '', 'Global Alert Message', 'string')
+        ]
+        
+        for key, value, desc, type_ in defaults:
+            if self.get_system_setting(key) is None:
+                self.set_system_setting(key, value, desc, type_)
+
+    def get_system_setting(self, key: str, default: Any = None) -> Any:
+        """Get system setting by key with type casting"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT value, type FROM system_settings WHERE key = ?', (key,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if not row:
+            return default
+            
+        value, value_type = row['value'], row['type']
+        
+        try:
+            if value_type == 'int':
+                return int(value)
+            elif value_type == 'float':
+                return float(value)
+            elif value_type == 'bool':
+                return str(value).lower() == 'true'
+            elif value_type == 'json':
+                return json.loads(value)
+            return value
+        except Exception:
+            return value
+
+    def set_system_setting(self, key: str, value: Any, description: str = None, value_type: str = None):
+        """Set system setting"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        if value_type is None:
+            if isinstance(value, bool): value_type = 'bool'
+            elif isinstance(value, int): value_type = 'int'
+            elif isinstance(value, float): value_type = 'float'
+            elif isinstance(value, (dict, list)): value_type = 'json'
+            else: value_type = 'string'
+            
+        str_value = str(value)
+        if value_type == 'json':
+            str_value = json.dumps(value)
+        elif value_type == 'bool':
+            str_value = str(value).lower()
+            
+        cursor.execute('''
+            INSERT INTO system_settings (key, value, description, type, updated_at) 
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET 
+                value = excluded.value,
+                description = COALESCE(excluded.description, system_settings.description),
+                type = COALESCE(excluded.type, system_settings.type),
+                updated_at = CURRENT_TIMESTAMP
+        ''', (key, str_value, description, value_type))
+        
+        conn.commit()
+        conn.close()
+
+    def get_all_system_settings(self) -> List[Dict]:
+        """Get all system settings"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM system_settings ORDER BY key')
+        rows = cursor.fetchall()
+        conn.close()
+        
+        results = []
+        for row in rows:
+            r = dict(row)
+            # Cast value
+            try:
+                if r['type'] == 'int':
+                    r['value'] = int(r['value'])
+                elif r['type'] == 'float':
+                    r['value'] = float(r['value'])
+                elif r['type'] == 'bool':
+                    r['value'] = str(r['value']).lower() == 'true'
+                elif r['type'] == 'json':
+                    r['value'] = json.loads(r['value'])
+            except:
+                pass
+            results.append(r)
+        return results
+
     # ========================================================================
     # USER OPERATIONS
     # ========================================================================
@@ -438,15 +636,15 @@ class Database:
     # ========================================================================
     
     def create_session(self, user_id: int, category: str, difficulty: str,
-                      duration_minutes: int) -> int:
+                      duration_minutes: int, mode: str = 'standard') -> int:
         """Create a new training session"""
         conn = self._get_connection()
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO sessions (user_id, category, difficulty, duration_minutes)
-            VALUES (?, ?, ?, ?)
-        ''', (user_id, category, difficulty, duration_minutes))
+            INSERT INTO sessions (user_id, category, difficulty, duration_minutes, mode)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, category, difficulty, duration_minutes, mode))
         
         session_id = cursor.lastrowid
         conn.commit()
@@ -510,9 +708,17 @@ class Database:
         
         return [dict(row) for row in rows]
     
+    def update_session_tags(self, session_id: int, tags: Optional[str]):
+        """Update tags for a session (comma-separated string)"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE sessions SET tags = ? WHERE id = ?', (tags, session_id))
+        conn.commit()
+        conn.close()
+    
     def search_sessions(self, start_date: Optional[str] = None, end_date: Optional[str] = None,
                        min_score: Optional[float] = None, max_score: Optional[float] = None,
-                       category: Optional[str] = None, search_term: Optional[str] = None,
+                       category: Optional[str] = None, role: Optional[str] = None, search_term: Optional[str] = None,
                        page: int = 1, limit: int = 20) -> Tuple[List[Dict], int]:
         """Search sessions with multiple filters"""
         conn = self._get_connection()
@@ -524,7 +730,7 @@ class Database:
         
         # Base query joining sessions and users
         query = '''
-            SELECT s.*, u.username, u.name as candidate_name 
+            SELECT s.*, u.username, u.name as candidate_name, u.role as user_role
             FROM sessions s 
             JOIN users u ON s.user_id = u.id 
             WHERE 1=1
@@ -566,6 +772,12 @@ class Database:
             params.append(category)
             count_params.append(category)
             
+        if role:
+            query += ' AND u.role = ?'
+            count_query += ' AND u.role = ?'
+            params.append(role)
+            count_params.append(role)
+            
         if search_term:
             term = f"%{search_term}%"
             query += ' AND (u.username LIKE ? OR u.name LIKE ?)'
@@ -587,6 +799,17 @@ class Database:
         
         return [dict(row) for row in rows], total_count
     
+    def verify_session_owner(self, session_id: int, user_id: int) -> bool:
+        """Verify if a user owns a session"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('SELECT 1 FROM sessions WHERE id = ? AND user_id = ?', (session_id, user_id))
+        result = cursor.fetchone()
+        conn.close()
+        
+        return result is not None
+
     def delete_session(self, session_id: int):
         """Delete a session and all related data"""
         import time, sqlite3
@@ -675,6 +898,91 @@ class Database:
         conn.commit()
         conn.close()
     
+    def save_view(self, admin_id: int, name: str, filters_json: str, shared: bool = False) -> int:
+        """Save a search view for an admin"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO saved_views (admin_id, name, filters_json, shared)
+            VALUES (?, ?, ?, ?)
+        ''', (admin_id, name, filters_json, 1 if shared else 0))
+        vid = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return vid
+    
+    def list_views(self, admin_id: int) -> List[Dict]:
+        """List saved views for an admin"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM saved_views WHERE admin_id = ? OR shared = 1 ORDER BY created_at DESC', (admin_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    
+    def delete_view(self, admin_id: int, view_id: int):
+        """Delete a saved view"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('DELETE FROM saved_views WHERE admin_id = ? AND id = ?', (admin_id, view_id))
+        conn.commit()
+        conn.close()
+
+    def share_view(self, admin_id: int, view_id: int, shared: bool):
+        """Share or unshare a view (owner only)"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('UPDATE saved_views SET shared = ? WHERE id = ? AND admin_id = ?', (1 if shared else 0, view_id, admin_id))
+        conn.commit()
+        conn.close()
+
+    def set_user_pref(self, user_id: int, key: str, value: str):
+        """Set a user preference"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO user_preferences (user_id, pref_key, pref_value)
+            VALUES (?, ?, ?)
+            ON CONFLICT(user_id, pref_key) DO UPDATE SET pref_value=excluded.pref_value, updated_at=CURRENT_TIMESTAMP
+        ''', (user_id, key, value))
+        conn.commit()
+        conn.close()
+
+    def get_user_pref(self, user_id: int, key: str) -> Optional[str]:
+        """Get a user preference"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT pref_value FROM user_preferences WHERE user_id = ? AND pref_key = ?', (user_id, key))
+        row = cursor.fetchone()
+        conn.close()
+        return row[0] if row else None
+
+    def save_session_draft(self, session_id: int, data_json: str):
+        """Save autosave draft for a session"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO session_drafts (session_id, data_json)
+            VALUES (?, ?)
+            ON CONFLICT(session_id) DO UPDATE SET data_json=excluded.data_json, updated_at=CURRENT_TIMESTAMP
+        ''', (session_id, data_json))
+        conn.commit()
+        conn.close()
+
+    def get_session_draft(self, session_id: int) -> Optional[Dict]:
+        """Get draft for a session"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT data_json FROM session_drafts WHERE session_id = ?', (session_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            try:
+                return json.loads(row[0])
+            except Exception:
+                return {'raw': row[0]}
+        return None
+    
     def get_report(self, session_id: int) -> Optional[Dict]:
         """Get report for a session"""
         conn = self._get_connection()
@@ -717,6 +1025,25 @@ class Database:
         conn.commit()
         conn.close()
         return inserted_ids
+
+    def get_recent_questions(self, user_id: int, category: str, limit: int = 100) -> List[str]:
+        """Get recently asked questions for a user in a category to avoid duplicates"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT q.question_text
+            FROM question_bank q
+            JOIN sessions s ON q.session_id = s.id
+            WHERE s.user_id = ? AND s.category = ?
+            ORDER BY s.started_at DESC
+            LIMIT ?
+        ''', (user_id, category, limit))
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [row[0] for row in rows]
 
     def get_session_questions(self, session_id: int) -> List[Dict]:
         """Get all prepared questions for a session ordered by position"""
@@ -924,21 +1251,37 @@ class Database:
             'sessions_by_difficulty': difficulty_stats
         }
 
-    def get_global_stats(self) -> Dict:
-        """Get global statistics for dashboard"""
+    def get_global_stats(self, role: Optional[str] = None) -> Dict:
+        """Get global statistics for dashboard, optionally filtered by user role"""
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'candidate'")
+        # Base WHERE clause for sessions
+        session_join = ""
+        session_where = "WHERE 1=1"
+        users_where = "WHERE role = 'candidate'"
+        params = []
+        
+        if role:
+            session_join = "JOIN users u ON s.user_id = u.id"
+            session_where += " AND u.role = ?"
+            users_where = "WHERE role = ?"
+            params.append(role)
+        
+        # 1. Total Users (matching role)
+        cursor.execute(f"SELECT COUNT(*) FROM users {users_where}", params if role else [])
         total_candidates = cursor.fetchone()[0]
         
-        cursor.execute("SELECT COUNT(*) FROM sessions WHERE status = 'completed'")
+        # 2. Completed Sessions
+        cursor.execute(f"SELECT COUNT(*) FROM sessions s {session_join} {session_where} AND s.status = 'completed'", params)
         completed_sessions = cursor.fetchone()[0]
         
-        cursor.execute("SELECT AVG(overall_score) FROM sessions WHERE overall_score IS NOT NULL")
+        # 3. Average Score
+        cursor.execute(f"SELECT AVG(s.overall_score) FROM sessions s {session_join} {session_where} AND s.overall_score IS NOT NULL", params)
         avg_score = cursor.fetchone()[0]
         
-        cursor.execute("SELECT COUNT(*) FROM sessions WHERE started_at >= datetime('now','start of day')")
+        # 4. Active Today
+        cursor.execute(f"SELECT COUNT(*) FROM sessions s {session_join} {session_where} AND s.started_at >= datetime('now','start of day')", params)
         active_today = cursor.fetchone()[0]
         
         conn.close()

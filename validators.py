@@ -132,7 +132,7 @@ class StartSessionRequest:
     duration_minutes: int
     
     VALID_CATEGORIES = UploadRequest.VALID_CATEGORIES
-    VALID_DIFFICULTIES = ['trial', 'basics', 'field-ready']
+    VALID_DIFFICULTIES = ['trial', 'basics', 'field-ready', 'adaptive']
     VALID_DURATIONS = [5, 10, 15, 20, 30]
     
     def validate(self):

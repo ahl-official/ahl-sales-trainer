@@ -1,10 +1,11 @@
+
 import sys
 import os
 
-# Add backend to path so imports work
-sys.path.append(os.path.join(os.getcwd(), 'backend'))
+# Add root to path so imports work
+sys.path.append(os.getcwd())
 
-from backend.database import Database
+from database import Database
 
 def create_admin():
     # Use the correct relative path to the database
@@ -17,16 +18,16 @@ def create_admin():
     if admin:
         print("Admin user already exists. Updating password...")
         # Update password directly
-        new_hash = db._hash_password('adminpassword')
+        new_hash = db._hash_password('admin123')
         conn = db._get_connection()
         conn.execute('UPDATE users SET password_hash = ? WHERE id = ?', (new_hash, admin['id']))
         conn.commit()
         conn.close()
-        print("Admin password updated.")
+        print("Admin password updated to 'admin123'.")
     else:
         print("Creating new admin user...")
         try:
-            user_id = db.create_user('admin', 'adminpassword', 'System Admin', 'admin')
+            user_id = db.create_user('admin', 'admin123', 'System Admin', 'admin')
             print(f"Admin user created with ID: {user_id}")
         except Exception as e:
             print(f"Error creating admin: {e}")

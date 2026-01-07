@@ -5,7 +5,21 @@ import sqlite3
 from dotenv import load_dotenv
 from pinecone import Pinecone
 from database import Database
-from app import CATEGORIES
+
+CATEGORIES = [
+    'Pre Consultation',
+    'Consultation Series',
+    'Sales Objections',
+    'After Fixing Objection',
+    'Full Wig Consultation',
+    'Hairline Consultation',
+    'Types of Patches',
+    'Upselling / Cross Selling',
+    'Retail Sales',
+    'SMP Sales',
+    'Sales Follow up',
+    'General Sales'
+]
 
 # Load environment variables
 load_dotenv()
@@ -30,7 +44,7 @@ def sync_pinecone_full():
         stats = index.describe_index_stats()
     except Exception as e:
         print(f"Error connecting to Pinecone: {e}")
-        return
+        return {'error': str(e)}
 
     pinecone_namespaces = stats.get('namespaces', {})
     print(f"Found {len(pinecone_namespaces)} namespaces in Pinecone.")
