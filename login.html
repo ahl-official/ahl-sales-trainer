@@ -132,7 +132,7 @@
                     
                     setTimeout(() => {
                         // Redirect based on role
-                        if (data.user.role === 'admin') {
+                        if (data.user.role === 'admin' || data.user.role === 'viewer') {
                             window.location.href = 'admin-dashboard.html';
                         } else {
                             window.location.href = 'trainer.html';

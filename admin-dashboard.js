@@ -3,14 +3,28 @@ const API_BASE = '';
 
 // Check authentication
 const user = JSON.parse(localStorage.getItem('ahl_user') || '{}');
-if (!user.id || user.role !== 'admin') {
+if (!user.id || (user.role !== 'admin' && user.role !== 'viewer')) {
     window.location.href = 'login.html';
 }
+const isViewer = user.role === 'viewer';
+const ADMIN_API_PREFIX = isViewer ? '/api/viewer' : '/api/admin';
+const DASHBOARD_PATH = '/dashboard';
 
 document.getElementById('admin-name').textContent = user.name;
 const avatar = document.getElementById('admin-avatar');
 if (avatar) avatar.textContent = user.name.substring(0, 2).toUpperCase();
 
+const createFormInit = document.getElementById('create-user-form');
+if (isViewer && createFormInit) {
+    const card = createFormInit.closest('.glass-card') || createFormInit;
+    card.classList.add('hidden');
+}
+// Hide role filter on dashboard for viewers (always candidates view)
+const roleFilterEl = document.getElementById('dashboard-role-filter');
+if (isViewer && roleFilterEl) {
+    roleFilterEl.value = 'candidate';
+    roleFilterEl.closest('.flex')?.classList.add('hidden');
+}
 // --- Navigation Logic ---
 function switchSection(sectionId) {
     // Update Sidebar UI
@@ -139,6 +153,10 @@ function switchDashboardTab(tab) {
     }
 }
 
+function formatScore(x) {
+    return (typeof x === 'number' && !isNaN(x)) ? Number(x).toFixed(1) : '—';
+}
+
 async function loadSessionsList() {
     const loading = document.getElementById('sessions-loading');
     const empty = document.getElementById('sessions-empty');
@@ -151,7 +169,7 @@ async function loadSessionsList() {
     try {
         // Build query params from filters
         // For now, just load all completed sessions
-        const response = await fetch(`${API_BASE}/api/admin/sessions/search?limit=50`, { credentials: 'include' });
+        const response = await fetch(`${API_BASE}${ADMIN_API_PREFIX}/sessions/search?limit=50`, { credentials: 'include' });
         const data = await response.json();
         
         if (loading) loading.classList.add('hidden');
@@ -209,7 +227,7 @@ async function loadDashboard() {
     // 1. Load KPI Stats
     try {
         const role = document.getElementById('dashboard-role-filter')?.value || 'candidate';
-        const response = await fetch(`${API_BASE}/api/admin/kpi?role=${role}`, { credentials: 'include' });
+        const response = await fetch(`${API_BASE}${ADMIN_API_PREFIX}/kpi?role=${role}`, { credentials: 'include' });
         const stats = await response.json();
         
         if (stats) {
@@ -243,7 +261,13 @@ async function loadCandidatesList() {
     
     try {
         const role = document.getElementById('dashboard-role-filter')?.value || 'candidate';
-        const response = await fetch(`${API_BASE}/api/admin/dashboard?role=${role}&limit=20`, { credentials: 'include' });
+        const searchTerm = (document.getElementById('search-input')?.value || '').trim();
+        const query = new URLSearchParams({
+            role,
+            limit: '20',
+            ...(searchTerm ? { search: searchTerm } : {})
+        }).toString();
+        const response = await fetch(`${API_BASE}${ADMIN_API_PREFIX}${DASHBOARD_PATH}?${query}`, { credentials: 'include' });
         const data = await response.json();
         
         container.innerHTML = '';
@@ -257,61 +281,64 @@ async function loadCandidatesList() {
         
         data.candidates.forEach(user => {
             const card = document.createElement('div');
-            card.className = 'bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all';
-            
-            // Build category badges
-            let catBadges = '';
-            if (user.category_performance) {
-                Object.entries(user.category_performance).forEach(([cat, perf]) => {
-                    let colorClass = 'bg-slate-100 text-slate-600';
-                    if (perf.average >= 8) colorClass = 'bg-emerald-50 text-emerald-600 border border-emerald-100';
-                    else if (perf.average >= 6) colorClass = 'bg-blue-50 text-blue-600 border border-blue-100';
-                    else if (perf.average > 0) colorClass = 'bg-amber-50 text-amber-600 border border-amber-100';
-                    
-                    catBadges += `
-                        <div class="px-2 py-1 rounded-lg text-xs font-medium ${colorClass} flex items-center gap-1">
-                            <span>${cat}</span>
-                            <span class="font-bold">${perf.average}</span>
-                        </div>
-                    `;
-                });
-            }
+            card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all';
             
             card.innerHTML = `
-                <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
-                            ${user.name ? user.name.substring(0, 2).toUpperCase() : '??'}
-                        </div>
-                        <div>
-                            <h4 class="font-bold text-slate-900">${user.name || user.username}</h4>
-                            <div class="flex items-center gap-2 text-xs text-slate-500">
-                                <span>${user.role}</span>
-                                <span>•</span>
-                                <span>${user.completed_sessions} Sessions</span>
-                            </div>
-                        </div>
+                <div class="flex items-center justify-between gap-4 w-full">
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
+                      ${(user.name || user.username || '??').substring(0,2).toUpperCase()}
                     </div>
-                    
-                    <div class="flex flex-wrap gap-2">
-                        ${catBadges}
+                    <div>
+                      <div class="font-semibold text-slate-900">${user.name || user.username}</div>
+                      <div class="text-xs text-slate-500">${user.username || ''}</div>
                     </div>
-                    
-                    <div class="flex items-center gap-4">
-                        <div class="text-right">
-                            <div class="text-xs text-slate-500 uppercase tracking-wide">Avg Score</div>
-                            <div class="text-lg font-bold ${getScoreColor(user.overall_average)}">${user.overall_average || '-'}</div>
-                        </div>
-                        <button onclick="viewUserSessions(${user.user_id})" class="px-3 py-1.5 text-sm text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg transition-colors">
-                            View Details
-                        </button>
-                        <button onclick="deleteCandidate(${user.user_id})" class="px-3 py-1.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors">
-                            Delete
-                        </button>
+                  </div>
+                  <div class="flex-1">
+                    <div class="grid grid-cols-3 gap-3 text-center">
+                      <div class="bg-slate-50 rounded-xl border border-slate-200 p-2">
+                        <div class="text-[11px] text-slate-500 uppercase">Completed</div>
+                        <div class="text-base font-bold text-slate-900">${user.completed_sessions || 0}</div>
+                      </div>
+                      <div class="bg-slate-50 rounded-xl border border-slate-200 p-2">
+                        <div class="text-[11px] text-slate-500 uppercase">Avg Score</div>
+                        <div class="text-base font-bold ${getScoreColor(user.overall_average)}">${formatScore(user.overall_average)}</div>
+                      </div>
+                      <div class="bg-slate-50 rounded-xl border border-slate-200 p-2">
+                        <div class="text-[11px] text-slate-500 uppercase">Role</div>
+                        <div class="text-base font-bold text-slate-700">${user.role}</div>
+                      </div>
                     </div>
+                    <div class="mt-3 grid grid-cols-3 gap-3 text-center">
+                      <div class="bg-white rounded-xl border border-slate-200 p-2">
+                        <div class="text-[11px] text-slate-500 uppercase">Trial Avg</div>
+                        <div class="text-base font-bold ${getScoreColor(user.difficulty_performance?.['trial']?.average)}">${formatScore(user.difficulty_performance?.['trial']?.average)}</div>
+                      </div>
+                      <div class="bg-white rounded-xl border border-slate-200 p-2">
+                        <div class="text-[11px] text-slate-500 uppercase">Basics Avg</div>
+                        <div class="text-base font-bold ${getScoreColor(user.difficulty_performance?.['basics']?.average)}">${formatScore(user.difficulty_performance?.['basics']?.average)}</div>
+                      </div>
+                      <div class="bg-white rounded-xl border border-slate-200 p-2">
+                        <div class="text-[11px] text-slate-500 uppercase">Field Ready Avg</div>
+                        <div class="text-base font-bold ${getScoreColor(user.difficulty_performance?.['field-ready']?.average)}">${formatScore(user.difficulty_performance?.['field-ready']?.average)}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button onclick="viewUserSessions(${user.user_id}, '${(user.name || user.username || '').replace(/'/g, "\\'")}')" class="px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                      Open
+                    </button>
+                    <button onclick="deleteCandidate(${user.user_id})" class="px-3 py-2 text-sm bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-gray-50 transition-colors">
+                      Delete
+                    </button>
+                  </div>
                 </div>
             `;
             container.appendChild(card);
+            if (isViewer) {
+                const delBtn = card.querySelector('button[onclick^="deleteCandidate"]');
+                if (delBtn) delBtn.remove();
+            }
         });
         
     } catch (e) {
@@ -393,6 +420,11 @@ async function loadRagStatus() {
     const statusContainer = document.getElementById('rag-status-container'); // Also in content section
     
     if (!container && !statusContainer) return;
+    if (isViewer) {
+        if (container) container.innerHTML = '<div class="text-center py-4 text-slate-400">Content status is available to admins only.</div>';
+        if (statusContainer) statusContainer.classList.add('hidden');
+        return;
+    }
     
     if (container) container.innerHTML = '<div class="text-center py-4 text-slate-400">Loading stats...</div>';
     
@@ -608,10 +640,16 @@ const createUserForm = document.getElementById('create-user-form');
 if (createUserForm) {
     createUserForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (isViewer) {
+            showToast('Insufficient permissions', 'error');
+            return;
+        }
         
         const username = document.getElementById('new-username').value.trim();
         const password = document.getElementById('new-password').value.trim();
         const name = document.getElementById('new-name').value.trim();
+        const roleEl = document.getElementById('new-role');
+        const role = roleEl ? roleEl.value : 'candidate';
         
         const btn = document.getElementById('create-user-btn');
         const resultDiv = document.getElementById('user-result');
@@ -625,7 +663,7 @@ if (createUserForm) {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password, name })
+                body: JSON.stringify({ username, password, name, role })
             });
             
             const data = await response.json();
@@ -653,10 +691,15 @@ if (createUserForm) {
 // --- Session Modal & Reports ---
 let modalSessions = [];
 let modalIndex = 0;
+let modalCandidateName = '';
 
-async function viewUserSessions(userId) {
+async function viewUserSessions(userId, candidateName = '') {
     try {
-        const resp = await fetch(`${API_BASE}/api/sessions/user/${userId}`, { credentials: 'include' });
+        modalCandidateName = candidateName || modalCandidateName || '';
+        const url = isViewer
+            ? `${API_BASE}${ADMIN_API_PREFIX}/sessions/user/${userId}`
+            : `${API_BASE}/api/sessions/user/${userId}`;
+        const resp = await fetch(url, { credentials: 'include' });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.message || 'Failed to load user sessions');
         modalSessions = (data.sessions || []).sort((a, b) => {
@@ -751,7 +794,7 @@ async function openSessionModal(sessionId) {
             const html = items.map((s, i) => {
                 const idx = modalSessions.findIndex(ms => ms.id === s.id);
                 const active = idx === modalIndex;
-                const score = (s.overall_score != null) ? s.overall_score : '—';
+                const score = formatScore(s.overall_score);
                 return `
                     <button class="w-full text-left px-3 py-2 rounded-lg border ${active?'bg-indigo-50 text-indigo-700 border-indigo-200':'bg-white text-slate-700 border-slate-200'} hover:bg-slate-50 text-xs"
                         onclick="selectSession(${idx})">
@@ -797,8 +840,20 @@ async function openSessionModal(sessionId) {
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.details || 'Failed to load report');
         const reportHtml = data.report_html || '';
-        currLabel.textContent = `#${sessionId}`;
+        const titleName = modalCandidateName || data.session?.username || '';
+        currLabel.textContent = `#${sessionId} • ${titleName}`;
         reportEl.innerHTML = `<div class="bg-white rounded-xl p-4 border border-slate-200">${reportHtml}</div>`;
+        
+        if (data.session && data.session.id != null) {
+            const sid = Number(data.session.id);
+            const idx = modalSessions.findIndex(s => Number(s.id) === sid);
+            if (idx >= 0) {
+                modalSessions[idx].overall_score = typeof data.session.overall_score === 'number'
+                    ? Number(data.session.overall_score)
+                    : modalSessions[idx].overall_score;
+                renderList();
+            }
+        }
         
         const saveBtn = document.getElementById('save-notes-btn');
         const notesInput = document.getElementById('session-notes');

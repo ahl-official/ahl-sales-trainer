@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, current_app, session, Response
 from services.auth_service import register_user, list_users, delete_user
 from services.pinecone_service import process_and_upload
 from sync_pinecone_full import sync_pinecone_full
-from utils.decorators import admin_required
+from utils.decorators import admin_required, role_required
 from utils.cache import cache_get, cache_set
 from extensions import db, limiter
 from import_users import import_users_from_csv
@@ -17,6 +17,7 @@ from datetime import datetime
 logger = logging.getLogger(__name__)
 
 admin_bp = Blueprint('admin', __name__)
+viewer_bp = Blueprint('viewer', __name__)
 
 @admin_bp.route('/upload', methods=['POST'])
 @admin_required
@@ -205,6 +206,23 @@ def dashboard_route():
                     'latest': perf['latest']
                 }
             
+            # Difficulty performance breakdown
+            diff_perf = {}
+            for s in completed:
+                diff = (s.get('difficulty') or 'unknown').lower()
+                score = s.get('overall_score')
+                if diff not in diff_perf:
+                    diff_perf[diff] = {'count': 0, 'scores': []}
+                diff_perf[diff]['count'] += 1
+                if score is not None:
+                    diff_perf[diff]['scores'].append(score)
+            for dkey, perf in diff_perf.items():
+                avg = round(sum(perf['scores']) / len(perf['scores']), 1) if perf['scores'] else 0.0
+                diff_perf[dkey] = {
+                    'count': perf['count'],
+                    'average': avg
+                }
+            
             users_with_stats.append({
                 'user_id': u['id'],
                 'username': u.get('username'),
@@ -213,7 +231,8 @@ def dashboard_route():
                 'total_sessions': total_sessions,
                 'completed_sessions': completed_count,
                 'overall_average': overall_avg,
-                'category_performance': cat_perf
+                'category_performance': cat_perf,
+                'difficulty_performance': diff_perf
             })
         except Exception as e:
             # Fallback to minimal user info if stats fail
@@ -225,7 +244,8 @@ def dashboard_route():
                 'total_sessions': 0,
                 'completed_sessions': 0,
                 'overall_average': None,
-                'category_performance': {}
+                'category_performance': {},
+                'difficulty_performance': {}
             })
     
     # Get stats filtered by the same role
@@ -270,6 +290,105 @@ def get_dashboard_stats():
     }
     return jsonify(stats)
 
+# Viewer read-only endpoints
+@viewer_bp.route('/dashboard/stats', methods=['GET'])
+@role_required(['viewer', 'admin'])
+def viewer_get_dashboard_stats():
+    role = request.args.get('role', 'candidate')
+    global_stats = db.get_global_stats(role=role)
+    stats = {
+        'total_candidates': global_stats['total_candidates'],
+        'total_sessions': global_stats['completed_sessions'],
+        'avg_score': global_stats['average_score'],
+        **global_stats
+    }
+    return jsonify(stats)
+
+@viewer_bp.route('/dashboard', methods=['GET'])
+@role_required(['viewer', 'admin'])
+def viewer_dashboard_route():
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 10, type=int)
+    search = request.args.get('search')
+    role_filter = request.args.get('role', 'candidate')
+    raw_users, total_count = list_users(role=role_filter, page=page, limit=limit, search=search)
+    users_with_stats = []
+    for u in raw_users:
+        try:
+            sessions = db.get_user_sessions(u['id'])
+            total_sessions = len(sessions)
+            completed = [s for s in sessions if (s.get('status') == 'completed')]
+            completed_count = len(completed)
+            completed_scores = [s.get('overall_score') for s in completed if s.get('overall_score') is not None]
+            overall_avg = round(sum(completed_scores) / len(completed_scores), 1) if completed_scores else None
+            cat_perf = {}
+            sorted_sessions = sorted(completed, key=lambda s: s.get('started_at') or '', reverse=True)
+            for s in sorted_sessions:
+                cat = s.get('category') or 'Uncategorized'
+                score = s.get('overall_score')
+                if cat not in cat_perf:
+                    cat_perf[cat] = {'count': 0, 'scores': [], 'latest': None}
+                cat_perf[cat]['count'] += 1
+                if score is not None:
+                    cat_perf[cat]['scores'].append(score)
+                if cat_perf[cat]['latest'] is None and score is not None:
+                    cat_perf[cat]['latest'] = round(score, 1)
+            for cat, perf in cat_perf.items():
+                avg = round(sum(perf['scores']) / len(perf['scores']), 1) if perf['scores'] else 0.0
+                cat_perf[cat] = {
+                    'count': perf['count'],
+                    'average': avg,
+                    'latest': perf['latest']
+                }
+            diff_perf = {}
+            for s in completed:
+                diff = (s.get('difficulty') or 'unknown').lower()
+                score = s.get('overall_score')
+                if diff not in diff_perf:
+                    diff_perf[diff] = {'count': 0, 'scores': []}
+                diff_perf[diff]['count'] += 1
+                if score is not None:
+                    diff_perf[diff]['scores'].append(score)
+            for dkey, perf in diff_perf.items():
+                avg = round(sum(perf['scores']) / len(perf['scores']), 1) if perf['scores'] else 0.0
+                diff_perf[dkey] = {
+                    'count': perf['count'],
+                    'average': avg
+                }
+            users_with_stats.append({
+                'user_id': u['id'],
+                'username': u.get('username'),
+                'name': u.get('name'),
+                'role': u.get('role'),
+                'total_sessions': total_sessions,
+                'completed_sessions': completed_count,
+                'overall_average': overall_avg,
+                'category_performance': cat_perf,
+                'difficulty_performance': diff_perf
+            })
+        except Exception:
+            users_with_stats.append({
+                'user_id': u['id'],
+                'username': u.get('username'),
+                'name': u.get('name'),
+                'role': u.get('role'),
+                'total_sessions': 0,
+                'completed_sessions': 0,
+                'overall_average': None,
+                'category_performance': {},
+                'difficulty_performance': {}
+            })
+    stats = db.get_global_stats(role=role_filter)
+    return jsonify({
+        'candidates': users_with_stats,
+        'pagination': {
+            'total': total_count,
+            'page': page,
+            'limit': limit,
+            'pages': (total_count + limit - 1) // limit if limit > 0 else 0
+        },
+        'stats': stats
+    })
 @admin_bp.route('/sessions/bulk-delete', methods=['POST'])
 @admin_required
 def bulk_delete_sessions():
@@ -518,6 +637,37 @@ def kpi():
         })
     except Exception as e:
         return jsonify({'error': 'server_error', 'message': str(e)}), 500
+
+@viewer_bp.route('/kpi', methods=['GET'])
+@role_required(['viewer', 'admin'])
+def viewer_kpi():
+    try:
+        role = request.args.get('role')
+        category = request.args.get('category')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        sessions, _ = db.search_sessions(
+            start_date=start_date,
+            end_date=end_date,
+            category=category,
+            role=role,
+            page=1,
+            limit=100000
+        )
+        completed = [s for s in sessions if s.get('status') == 'completed']
+        avg_score = round(sum([s['overall_score'] for s in completed if s.get('overall_score') is not None]) / max(1, len([s for s in completed if s.get('overall_score') is not None])), 1) if completed else 0.0
+        unique_candidates = set(s['user_id'] for s in sessions if s.get('user_id'))
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        active_today_count = len(set(s['user_id'] for s in sessions if s.get('user_id') and str(s.get('started_at', '')).startswith(today_str)))
+        return jsonify({
+            'total_sessions': len(sessions),
+            'completed_sessions': len(completed),
+            'average_score': avg_score,
+            'total_candidates': len(unique_candidates),
+            'active_today': active_today_count
+        })
+    except Exception as e:
+        return jsonify({'error': 'server_error', 'message': str(e)}), 500
 @admin_bp.route('/sessions/<int:session_id>', methods=['DELETE'])
 @admin_required
 def delete_session(session_id):
@@ -581,6 +731,50 @@ def search_sessions_route():
             'pages': (total + limit - 1) // limit if limit > 0 else 0
         }
     })
+
+@viewer_bp.route('/sessions/search', methods=['GET'])
+@role_required(['viewer', 'admin'])
+def viewer_search_sessions_route():
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 20, type=int)
+    search = request.args.get('search')
+    user_id = request.args.get('user_id')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    min_score = request.args.get('min_score', type=float)
+    max_score = request.args.get('max_score', type=float)
+    category = request.args.get('category')
+    role = request.args.get('role')
+    sessions, total = db.search_sessions(
+        search_term=search,
+        page=page,
+        limit=limit,
+        start_date=start_date,
+        end_date=end_date,
+        min_score=min_score,
+        max_score=max_score,
+        category=category,
+        role=role
+    )
+    return jsonify({
+        'sessions': sessions,
+        'pagination': {
+            'total': total,
+            'page': page,
+            'limit': limit,
+            'pages': (total + limit - 1) // limit if limit > 0 else 0
+        }
+    })
+
+@viewer_bp.route('/sessions/user/<int:user_id>', methods=['GET'])
+@role_required(['viewer', 'admin'])
+def viewer_get_user_sessions_route(user_id: int):
+    try:
+        sessions = db.get_user_sessions(user_id)
+        return jsonify({'sessions': sessions})
+    except Exception as e:
+        logger.error(f"Failed to get user sessions for viewer: {e}")
+        return jsonify({'error': 'server_error'}), 500
 
 @admin_bp.route('/categories', methods=['GET'])
 @admin_required

@@ -14,6 +14,7 @@ from pdf_generator import generate_session_pdf
 from config_logging import setup_logging
 from routes.auth_routes import auth_bp
 from routes.admin_routes import admin_bp
+from routes.admin_routes import viewer_bp
 from routes.training_routes import training_bp
 from routes.session_routes import session_bp
 from routes.main_routes import main_bp
@@ -114,6 +115,7 @@ db.initialize()
 # Register Blueprints
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
 app.register_blueprint(admin_bp, url_prefix='/api/admin')
+app.register_blueprint(viewer_bp, url_prefix='/api/viewer')
 app.register_blueprint(training_bp, url_prefix='/api/training')
 app.register_blueprint(session_bp, url_prefix='/api/sessions')
 app.register_blueprint(main_bp, url_prefix='/')

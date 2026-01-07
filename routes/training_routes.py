@@ -294,11 +294,10 @@ def end_session_route():
 @training_bp.route('/report/<int:session_id>', methods=['GET'])
 @login_required
 def get_report(session_id):
-    # Verify ownership or admin
+    # Verify ownership or allow admin/viewer
     if not db.verify_session_owner(session_id, session['user_id']):
-        # Check if admin
         user = db.get_user_by_id(session['user_id'])
-        if not user or user['role'] != 'admin':
+        if not user or user['role'] not in ['admin', 'viewer']:
             return jsonify({'error': 'unauthorized'}), 403
     
     try:
@@ -311,7 +310,7 @@ def get_report(session_id):
             if user and user.get('role') == 'admin':
                 report_html = build_enhanced_report_html(db, session_id)
             else:
-                report_html = build_candidate_report_html(db, session_id)
+                report_html = build_enhanced_report_html(db, session_id)
         except Exception as build_err:
             logger.error(f"Primary report builder failed: {build_err}", exc_info=True)
             report_html = None

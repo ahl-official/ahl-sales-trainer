@@ -837,6 +837,10 @@
                 label.textContent = text;
             }
         }
+        function setReportContent(html) {
+            const el = document.getElementById('report-content');
+            if (el) el.innerHTML = html;
+        }
         
         function updateContextChips() {
             const container = document.getElementById('context-chips');
@@ -1013,7 +1017,7 @@
             // Generate report
             document.getElementById('training-session').classList.add('hidden');
             document.getElementById('report-screen').classList.remove('hidden');
-            document.getElementById('report-content').innerHTML = '<p class="text-center">🔄 Generating performance report...</p>';
+            setReportContent('<p class="text-center">🔄 Generating performance report...</p>');
             
             async function loadReportOnce() {
                 const resp = await fetch(`${API_BASE}/api/training/report/${sessionState.sessionId}`, { method: 'GET', credentials: 'include' });
@@ -1028,7 +1032,7 @@
                 }
                 if (data && typeof data.report_html !== 'undefined') {
                     const html = data.report_html || "<div class='text-slate-500 text-sm'>No questions were recorded for this session.</div>";
-                    document.getElementById('report-content').innerHTML = html;
+                    setReportContent(html);
                     return data;
                 }
                 throw new Error('No report_html in response');
@@ -1111,19 +1115,19 @@
                 }
 
             } catch (e) {
-                document.getElementById('report-content').innerHTML = `
+                setReportContent(`
                   <div class="text-center">
                     <p class="text-slate-500 mb-2">Report is still preparing...</p>
                     <button id="retry-report-btn" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm">Retry</button>
                     <div class="mt-2 text-xs text-slate-400">${e?.message || 'Unknown error'}</div>
                   </div>
-                `;
+                `);
                 document.getElementById('retry-report-btn')?.addEventListener('click', async () => {
-                    document.getElementById('report-content').innerHTML = '<p class="text-center">🔄 Generating performance report...</p>';
+                    setReportContent('<p class="text-center">🔄 Generating performance report...</p>');
                     try {
                         await loadReportOnce();
                     } catch (err) {
-                        document.getElementById('report-content').innerHTML = '<p class="text-center text-red-500">Failed to load report.</p>';
+                        setReportContent('<p class="text-center text-red-500">Failed to load report.</p>');
                     }
                 });
             }

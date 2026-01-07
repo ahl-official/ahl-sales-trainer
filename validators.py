@@ -47,8 +47,8 @@ class CreateUserRequest:
             errors.append(ValidationError('name', 'Must be less than 100 characters'))
         
         # Role validation
-        if self.role not in ['admin', 'candidate']:
-            errors.append(ValidationError('role', 'Must be either "admin" or "candidate"'))
+        if self.role not in ['admin', 'candidate', 'viewer']:
+            errors.append(ValidationError('role', 'Must be one of "admin", "candidate", "viewer"'))
         
         if errors:
             raise ValueError(errors)
