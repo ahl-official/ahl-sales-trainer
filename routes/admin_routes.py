@@ -336,6 +336,24 @@ def add_course_category_route(course_id):
     except Exception as e:
         return jsonify({'error': 'create_failed', 'message': str(e)}), 500
 
+@viewer_bp.route('/courses', methods=['GET'])
+@role_required(['viewer', 'admin'])
+def viewer_list_courses_route():
+    try:
+        courses = db.list_courses()
+        return jsonify({'courses': courses})
+    except Exception as e:
+        return jsonify({'error': 'server_error'}), 500
+
+@viewer_bp.route('/courses/<int:course_id>/categories', methods=['GET'])
+@role_required(['viewer', 'admin'])
+def viewer_list_course_categories_route(course_id):
+    try:
+        cats = db.get_course_categories(course_id)
+        return jsonify({'categories': cats})
+    except Exception as e:
+        return jsonify({'error': 'server_error'}), 500
+
 @admin_bp.route('/dashboard/stats', methods=['GET'])
 @admin_required
 def get_dashboard_stats():

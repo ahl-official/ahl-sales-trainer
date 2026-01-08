@@ -94,6 +94,20 @@ class Database:
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         ''')
+        try:
+            cursor.execute("PRAGMA table_info(uploads)")
+            u_cols = [r[1] for r in cursor.fetchall()]
+            if 'course_id' not in u_cols:
+                cursor.execute("ALTER TABLE uploads ADD COLUMN course_id INTEGER DEFAULT 1")
+        except Exception as e:
+            logger.error(f"Failed ensuring uploads.course_id column: {e}")
+        try:
+            cursor.execute("PRAGMA table_info(sessions)")
+            s_cols = [r[1] for r in cursor.fetchall()]
+            if 'course_id' not in s_cols:
+                cursor.execute("ALTER TABLE sessions ADD COLUMN course_id INTEGER DEFAULT 1")
+        except Exception as e:
+            logger.error(f"Failed ensuring sessions.course_id column: {e}")
         
         # Conversation messages table
         cursor.execute('''
@@ -265,6 +279,53 @@ class Database:
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
             )
         ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS courses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                slug TEXT UNIQUE NOT NULL,
+                description TEXT,
+                is_active INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS course_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                display_order INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (course_id) REFERENCES courses(id) ON DELETE CASCADE,
+                UNIQUE(course_id, name)
+            )
+        ''')
+        try:
+            cursor.execute("SELECT id FROM courses WHERE slug = ?", ('sales-trainer',))
+            row = cursor.fetchone()
+            if not row:
+                cursor.execute("INSERT INTO courses (name, slug, description, is_active) VALUES (?, ?, ?, 1)", ('Sales Trainer', 'sales-trainer', 'Default Sales Trainer course'))
+                default_course_id = cursor.lastrowid
+                defaults = [
+                    'Pre Consultation',
+                    'Consultation Series',
+                    'Sales Objections',
+                    'After Fixing Objection',
+                    'Full Wig Consultation',
+                    'Hairline Consultation',
+                    'Types of Patches',
+                    'Upselling / Cross Selling',
+                    'Retail Sales',
+                    'SMP Sales',
+                    'Sales Follow up',
+                    'General Sales'
+                ]
+                order = 0
+                for name in defaults:
+                    cursor.execute("INSERT OR IGNORE INTO course_categories (course_id, name, display_order) VALUES (?, ?, ?)", (default_course_id, name, order))
+                    order += 1
+        except Exception as e:
+            logger.error(f"Failed ensuring default course and categories: {e}")
         
         # Create indexes for better query performance
         logger.info("Creating indexes...")
@@ -276,10 +337,12 @@ class Database:
             'CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at)',
             'CREATE INDEX IF NOT EXISTS idx_sessions_user_status ON sessions(user_id, status)',
             'CREATE INDEX IF NOT EXISTS idx_sessions_user_category ON sessions(user_id, category)',
+            'CREATE INDEX IF NOT EXISTS idx_sessions_course_id ON sessions(course_id)',
             'CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)',
             'CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp)',
             'CREATE INDEX IF NOT EXISTS idx_uploads_category ON uploads(category)',
             'CREATE INDEX IF NOT EXISTS idx_uploads_uploaded_at ON uploads(uploaded_at)',
+            'CREATE INDEX IF NOT EXISTS idx_uploads_course_id ON uploads(course_id)',
             'CREATE INDEX IF NOT EXISTS idx_reports_session_id ON reports(session_id)',
             'CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)',
             'CREATE INDEX IF NOT EXISTS idx_audit_user_id ON audit_log(user_id)',
