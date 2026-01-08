@@ -59,6 +59,7 @@
         
         // Session state
         const sessionState = {
+            selectedCourseId: 1, // Default to Sales Trainer
             selectedCategory: null,
             sessionId: null,
             mode: 'standard',
@@ -120,18 +121,72 @@
             window.location.href = 'login.html';
         });
         
+        // Load Courses
+        async function loadCourses() {
+            try {
+                const select = document.getElementById('course-select');
+                if (!select) return;
+
+                const response = await fetch(`${API_BASE}/api/training/courses`, { credentials: 'include' });
+                if (!response.ok) throw new Error('Failed to load courses');
+                
+                const data = await response.json();
+                select.innerHTML = '';
+                
+                (data.courses || []).forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = c.name;
+                    if (c.id === sessionState.selectedCourseId) opt.selected = true;
+                    select.appendChild(opt);
+                });
+                
+                // If current selection not in list, pick first
+                if (data.courses.length > 0 && !data.courses.find(c => c.id === sessionState.selectedCourseId)) {
+                    sessionState.selectedCourseId = data.courses[0].id;
+                    select.value = sessionState.selectedCourseId;
+                }
+                
+                select.addEventListener('change', (e) => {
+                    sessionState.selectedCourseId = parseInt(e.target.value);
+                    loadCategories();
+                    // Also clear any previous session state if needed
+                });
+
+                // Load categories for the initial course
+                loadCategories();
+
+            } catch (e) {
+                console.error('Failed to load courses', e);
+                // Fallback to loading categories for default course
+                loadCategories();
+            }
+        }
+
         // Load categories
         async function loadCategories() {
             try {
-                const response = await fetch(`${API_BASE}/api/training/categories`, { credentials: 'include' });
+                const grid = document.getElementById('categories-grid');
+                const loading = document.getElementById('categories-loading');
+                
+                if (loading) loading.classList.remove('hidden');
+                if (grid) grid.classList.add('hidden');
+                
+                const response = await fetch(`${API_BASE}/api/training/categories?course_id=${sessionState.selectedCourseId}`, { credentials: 'include' });
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
                 
-                const grid = document.getElementById('categories-grid');
-                grid.innerHTML = '';
+                if (loading) loading.classList.add('hidden');
+                if (grid) {
+                    grid.innerHTML = '';
+                    grid.classList.remove('hidden');
+                }
                 
                 const categories = Array.isArray(data && data.categories) ? data.categories : [];
-                if (categories.length === 0) throw new Error('No categories available');
+                if (categories.length === 0) {
+                    if (grid) grid.innerHTML = '<p class="col-span-3 text-center text-slate-500">No modules found for this course.</p>';
+                    return;
+                }
                 
                 categories.forEach(cat => {
                     const name = typeof cat === 'string' ? cat : (cat.name || '');
@@ -301,7 +356,8 @@
                         category: sessionState.selectedCategory,
                         difficulty: sessionState.difficulty,
                         duration_minutes: sessionState.duration,
-                        mode: sessionState.mode
+                        mode: sessionState.mode,
+                        course_id: sessionState.selectedCourseId
                     })
                 });
                 
@@ -1341,7 +1397,7 @@
         
         // Initial checks
         window.addEventListener('load', () => {
-            loadCategories();
+            loadCourses();
             loadOnboardingStatus();
             checkForResume();
             

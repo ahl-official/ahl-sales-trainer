@@ -9,6 +9,262 @@ if (!user.id || (user.role !== 'admin' && user.role !== 'viewer')) {
 const isViewer = user.role === 'viewer';
 const ADMIN_API_PREFIX = isViewer ? '/api/viewer' : '/api/admin';
 const DASHBOARD_PATH = '/dashboard';
+let selectedCourseId = parseInt(localStorage.getItem('selected_course_id') || '1', 10) || 1;
+
+// --- Course Management ---
+
+async function loadCourses() {
+    try {
+        const resp = await fetch(`${API_BASE}${ADMIN_API_PREFIX}/courses`, { credentials: 'include' });
+        if (!resp.ok) {
+             if (resp.status === 401) window.location.href = 'login.html';
+             return;
+        }
+        const data = await resp.json();
+        
+        const select = document.getElementById('course-select');
+        if (select) {
+            select.innerHTML = '';
+            (data.courses || []).forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.id;
+                opt.textContent = c.name;
+                if (c.id === selectedCourseId) opt.selected = true;
+                select.appendChild(opt);
+            });
+            // If selected course no longer exists, default to first
+            if (data.courses.length > 0 && !data.courses.find(c => c.id === selectedCourseId)) {
+                selectedCourseId = data.courses[0].id;
+                localStorage.setItem('selected_course_id', selectedCourseId);
+                select.value = selectedCourseId;
+            }
+        }
+        await loadCourseCategories();
+        // Initial view load
+        const currentSection = document.querySelector('aside nav button.bg-indigo-50')?.id?.replace('nav-', '') || 'dashboard';
+        switchSection(currentSection);
+    } catch (e) {
+        console.error('Failed to load courses', e);
+    }
+}
+
+function switchCourse(id) {
+    selectedCourseId = parseInt(id);
+    localStorage.setItem('selected_course_id', selectedCourseId);
+    
+    // Update categories for the new course
+    loadCourseCategories();
+    
+    // Reload current view
+    const currentSection = document.querySelector('aside nav button.bg-indigo-50')?.id?.replace('nav-', '') || 'dashboard';
+    switchSection(currentSection);
+}
+
+// Course Manager Modal
+function openCurrentCourseCategoryManager() {
+    const select = document.getElementById('course-select');
+    const courseName = select.options[select.selectedIndex]?.text || 'Current Course';
+    openCategoryManager(selectedCourseId, courseName);
+}
+
+async function openCourseManager() {
+    const modal = document.getElementById('course-manager-modal');
+    if (modal) modal.classList.remove('hidden');
+    await refreshCourseManagerList();
+}
+
+function closeCourseManager() {
+    const modal = document.getElementById('course-manager-modal');
+    if (modal) modal.classList.add('hidden');
+    // Refresh main dropdown in case changes were made
+    loadCourses();
+}
+
+async function refreshCourseManagerList() {
+    const list = document.getElementById('course-manager-list');
+    if (!list) return;
+    
+    list.innerHTML = '<div class="p-4 text-center text-slate-400">Loading...</div>';
+    
+    try {
+        const resp = await fetch(`${API_BASE}${ADMIN_API_PREFIX}/courses`, { credentials: 'include' });
+        const data = await resp.json();
+        
+        list.innerHTML = '';
+        (data.courses || []).forEach(c => {
+            const div = document.createElement('div');
+            div.className = 'px-5 py-4 flex items-center justify-between bg-white hover:bg-slate-50 transition-colors';
+            div.innerHTML = `
+                <div>
+                    <div class="font-medium text-slate-800">${c.name}</div>
+                    <div class="text-xs text-slate-500">/${c.slug} • ID: ${c.id}</div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="openCategoryManager(${c.id}, '${c.name.replace(/'/g, "\\'")}')" class="px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg hover:border-indigo-300 hover:text-indigo-600 transition-colors">
+                        Manage Categories
+                    </button>
+                    <button onclick="deleteCourse(${c.id}, '${c.name.replace(/'/g, "\\'")}')" class="px-3 py-1.5 text-xs bg-rose-50 text-rose-600 border border-rose-200 rounded-lg hover:bg-rose-100 transition-colors">
+                        Delete
+                    </button>
+                </div>
+            `;
+            list.appendChild(div);
+        });
+    } catch (e) {
+        list.innerHTML = '<div class="p-4 text-center text-rose-500">Failed to load courses</div>';
+    }
+}
+
+document.getElementById('create-course-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('create-course-btn');
+    const name = document.getElementById('new-course-name').value;
+    const slug = document.getElementById('new-course-slug').value;
+    const desc = document.getElementById('new-course-desc').value;
+    
+    if (!name || !slug) return;
+    
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = 'Creating...';
+    
+    try {
+        const resp = await fetch(`${API_BASE}${ADMIN_API_PREFIX}/courses`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, slug, description: desc }),
+            credentials: 'include'
+        });
+        const data = await resp.json();
+        
+        if (resp.ok) {
+            showToast('Course created!', 'success');
+            document.getElementById('create-course-form').reset();
+            await refreshCourseManagerList();
+        } else {
+            showToast(data.message || 'Failed to create course', 'error');
+        }
+    } catch (e) {
+        showToast(e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+});
+
+// Category Manager Modal
+let managingCourseId = null;
+
+async function openCategoryManager(courseId, courseName) {
+    managingCourseId = courseId;
+    const modal = document.getElementById('category-manager-modal');
+    const title = document.getElementById('cat-manager-course-name');
+    if (modal) modal.classList.remove('hidden');
+    if (title) title.textContent = `For Course: ${courseName}`;
+    await refreshCategoryManagerList();
+}
+
+async function deleteCourse(courseId, courseName) {
+    const typed = window.prompt(`Type the course name to confirm deletion:\n${courseName}`);
+    if (!typed || typed.trim() !== courseName.trim()) {
+        showToast('Name does not match. Deletion cancelled.', 'warning');
+        return;
+    }
+    try {
+        const resp = await fetch(`${API_BASE}${ADMIN_API_PREFIX}/courses/${courseId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await resp.json();
+        if (resp.ok && data.success) {
+            showToast('Course deleted', 'success');
+            await refreshCourseManagerList();
+            await loadCourses();
+        } else {
+            showToast(data.message || 'Deletion failed', 'error');
+        }
+    } catch (e) {
+        showToast(e.message || 'Deletion failed', 'error');
+    }
+}
+function closeCategoryManager() {
+    const modal = document.getElementById('category-manager-modal');
+    if (modal) modal.classList.add('hidden');
+    managingCourseId = null;
+}
+
+async function refreshCategoryManagerList() {
+    if (!managingCourseId) return;
+    const list = document.getElementById('category-manager-list');
+    if (!list) return;
+    
+    list.innerHTML = '<div class="p-4 text-center text-slate-400">Loading...</div>';
+    
+    try {
+        const resp = await fetch(`${API_BASE}${ADMIN_API_PREFIX}/courses/${managingCourseId}/categories`, { credentials: 'include' });
+        const data = await resp.json();
+        
+        list.innerHTML = '';
+        if (!data.categories || data.categories.length === 0) {
+            list.innerHTML = '<div class="p-4 text-center text-slate-400 italic">No categories yet</div>';
+            return;
+        }
+        
+        data.categories.forEach(cat => {
+            const div = document.createElement('div');
+            div.className = 'px-4 py-3 flex items-center justify-between text-sm hover:bg-slate-50';
+            div.innerHTML = `
+                <span class="text-slate-700">${cat.name}</span>
+                <span class="text-xs text-slate-400">#${cat.id}</span>
+            `;
+            list.appendChild(div);
+        });
+    } catch (e) {
+        list.innerHTML = '<div class="p-4 text-center text-rose-500">Failed to load categories</div>';
+    }
+}
+
+document.getElementById('add-category-form')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!managingCourseId) return;
+    
+    const btn = document.getElementById('add-cat-btn');
+    const nameInput = document.getElementById('new-cat-name');
+    const name = nameInput.value.trim();
+    
+    if (!name) return;
+    
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '...';
+    
+    try {
+        const resp = await fetch(`${API_BASE}${ADMIN_API_PREFIX}/courses/${managingCourseId}/categories`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+            credentials: 'include'
+        });
+        const data = await resp.json();
+        
+        if (resp.ok) {
+            showToast('Module added!', 'success');
+            nameInput.value = '';
+            await refreshCategoryManagerList();
+            await loadCourseCategories(); // Update the main dropdown
+        } else {
+            showToast(data.message || 'Failed to add category', 'error');
+        }
+    } catch (e) {
+        showToast(e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    }
+});
+
+// Initial load is handled by DOMContentLoaded event listener at the bottom
+// loadCourses();
 
 document.getElementById('admin-name').textContent = user.name;
 const avatar = document.getElementById('admin-avatar');
@@ -169,7 +425,11 @@ async function loadSessionsList() {
     try {
         // Build query params from filters
         // For now, just load all completed sessions
-        const response = await fetch(`${API_BASE}${ADMIN_API_PREFIX}/sessions/search?limit=50`, { credentials: 'include' });
+        const response = await fetch(`${API_BASE}${ADMIN_API_PREFIX}/sessions/search?limit=50&course_id=${encodeURIComponent(selectedCourseId)}`, { credentials: 'include' });
+        if (response.status === 401) {
+            window.location.href = 'login.html';
+            return;
+        }
         const data = await response.json();
         
         if (loading) loading.classList.add('hidden');
@@ -227,7 +487,11 @@ async function loadDashboard() {
     // 1. Load KPI Stats
     try {
         const role = document.getElementById('dashboard-role-filter')?.value || 'candidate';
-        const response = await fetch(`${API_BASE}${ADMIN_API_PREFIX}/kpi?role=${role}`, { credentials: 'include' });
+        const response = await fetch(`${API_BASE}${ADMIN_API_PREFIX}/kpi?role=${role}&course_id=${encodeURIComponent(selectedCourseId)}`, { credentials: 'include' });
+        if (response.status === 401) {
+            window.location.href = 'login.html';
+            return;
+        }
         const stats = await response.json();
         
         if (stats) {
@@ -261,13 +525,20 @@ async function loadCandidatesList() {
     
     try {
         const role = document.getElementById('dashboard-role-filter')?.value || 'candidate';
-        const searchTerm = (document.getElementById('search-input')?.value || '').trim();
+        const desktopTerm = (document.getElementById('search-input')?.value || '').trim();
+        const mobileTerm = (document.getElementById('mobile-search-input')?.value || '').trim();
+        const searchTerm = (mobileTerm || desktopTerm);
         const query = new URLSearchParams({
             role,
             limit: '20',
+            course_id: String(selectedCourseId),
             ...(searchTerm ? { search: searchTerm } : {})
         }).toString();
         const response = await fetch(`${API_BASE}${ADMIN_API_PREFIX}${DASHBOARD_PATH}?${query}`, { credentials: 'include' });
+        if (response.status === 401) {
+            window.location.href = 'login.html';
+            return;
+        }
         const data = await response.json();
         
         container.innerHTML = '';
@@ -281,54 +552,50 @@ async function loadCandidatesList() {
         
         data.candidates.forEach(user => {
             const card = document.createElement('div');
-            card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all';
+            card.className = 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition-all w-full';
             
             card.innerHTML = `
-                <div class="flex items-center justify-between gap-4 w-full">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 w-full">
                   <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-bold text-sm">
                       ${(user.name || user.username || '??').substring(0,2).toUpperCase()}
                     </div>
                     <div>
-                      <div class="font-semibold text-slate-900">${user.name || user.username}</div>
+                      <div class="font-semibold text-slate-900 text-base">${user.name || user.username}</div>
                       <div class="text-xs text-slate-500">${user.username || ''}</div>
-                    </div>
-                  </div>
-                  <div class="flex-1">
-                    <div class="grid grid-cols-3 gap-3 text-center">
-                      <div class="bg-slate-50 rounded-xl border border-slate-200 p-2">
-                        <div class="text-[11px] text-slate-500 uppercase">Completed</div>
-                        <div class="text-base font-bold text-slate-900">${user.completed_sessions || 0}</div>
-                      </div>
-                      <div class="bg-slate-50 rounded-xl border border-slate-200 p-2">
-                        <div class="text-[11px] text-slate-500 uppercase">Avg Score</div>
-                        <div class="text-base font-bold ${getScoreColor(user.overall_average)}">${formatScore(user.overall_average)}</div>
-                      </div>
-                      <div class="bg-slate-50 rounded-xl border border-slate-200 p-2">
-                        <div class="text-[11px] text-slate-500 uppercase">Role</div>
-                        <div class="text-base font-bold text-slate-700">${user.role}</div>
-                      </div>
-                    </div>
-                    <div class="mt-3 grid grid-cols-3 gap-3 text-center">
-                      <div class="bg-white rounded-xl border border-slate-200 p-2">
-                        <div class="text-[11px] text-slate-500 uppercase">Trial Avg</div>
-                        <div class="text-base font-bold ${getScoreColor(user.difficulty_performance?.['trial']?.average)}">${formatScore(user.difficulty_performance?.['trial']?.average)}</div>
-                      </div>
-                      <div class="bg-white rounded-xl border border-slate-200 p-2">
-                        <div class="text-[11px] text-slate-500 uppercase">Basics Avg</div>
-                        <div class="text-base font-bold ${getScoreColor(user.difficulty_performance?.['basics']?.average)}">${formatScore(user.difficulty_performance?.['basics']?.average)}</div>
-                      </div>
-                      <div class="bg-white rounded-xl border border-slate-200 p-2">
-                        <div class="text-[11px] text-slate-500 uppercase">Field Ready Avg</div>
-                        <div class="text-base font-bold ${getScoreColor(user.difficulty_performance?.['field-ready']?.average)}">${formatScore(user.difficulty_performance?.['field-ready']?.average)}</div>
+                      <div class="mt-1 inline-flex items-center gap-2">
+                        <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs">${user.role}</span>
+                        <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-xs">Completed: ${user.completed_sessions || 0}</span>
                       </div>
                     </div>
                   </div>
-                  <div class="flex items-center gap-2">
-                    <button onclick="viewUserSessions(${user.user_id}, '${(user.name || user.username || '').replace(/'/g, "\\'")}')" class="px-3 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
+                  <div class="flex items-center md:items-start gap-3 md:gap-4">
+                    <div class="text-center">
+                      <div class="text-xs text-slate-500 uppercase">Avg Score</div>
+                      <div class="text-2xl font-bold ${getScoreColor(user.overall_average)}">${formatScore(user.overall_average)}</div>
+                    </div>
+                    <div class="flex-1">
+                      <div class="grid grid-cols-3 gap-2">
+                        <div class="text-center">
+                          <div class="text-xs text-slate-500 uppercase whitespace-nowrap">Trial</div>
+                          <div class="text-sm font-bold ${getScoreColor(user.difficulty_performance?.['trial']?.average)}">${formatScore(user.difficulty_performance?.['trial']?.average)}</div>
+                        </div>
+                        <div class="text-center">
+                          <div class="text-xs text-slate-500 uppercase whitespace-nowrap">Basics</div>
+                          <div class="text-sm font-bold ${getScoreColor(user.difficulty_performance?.['basics']?.average)}">${formatScore(user.difficulty_performance?.['basics']?.average)}</div>
+                        </div>
+                        <div class="text-center">
+                          <div class="text-xs text-slate-500 uppercase whitespace-nowrap">Field</div>
+                          <div class="text-sm font-bold ${getScoreColor(user.difficulty_performance?.['field-ready']?.average)}">${formatScore(user.difficulty_performance?.['field-ready']?.average)}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="mt-2 md:mt-0 flex flex-col md:flex-row gap-2 w-full md:w-auto">
+                    <button onclick="viewUserSessions(${user.user_id}, '${(user.name || user.username || '').replace(/'/g, "\\'")}')" class="w-full md:w-auto px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors">
                       Open
                     </button>
-                    <button onclick="deleteCandidate(${user.user_id})" class="px-3 py-2 text-sm bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-gray-50 transition-colors">
+                    <button onclick="deleteCandidate(${user.user_id})" class="px-3 py-2 text-sm bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-gray-50 transition-colors md:ml-2">
                       Delete
                     </button>
                   </div>
@@ -355,6 +622,28 @@ function getScoreColor(score) {
     return 'text-rose-600';
 }
 
+const searchBtn = document.getElementById('search-btn');
+const refreshBtn = document.getElementById('refresh-btn');
+const mobileSearchBtn = document.getElementById('mobile-search-btn');
+const mobileRefreshBtn = document.getElementById('mobile-refresh-btn');
+const desktopSearchInput = document.getElementById('search-input');
+const mobileSearchInput = document.getElementById('mobile-search-input');
+searchBtn?.addEventListener('click', () => loadCandidatesList());
+refreshBtn?.addEventListener('click', () => {
+    if (desktopSearchInput) desktopSearchInput.value = '';
+    loadCandidatesList();
+});
+mobileSearchBtn?.addEventListener('click', () => loadCandidatesList());
+mobileRefreshBtn?.addEventListener('click', () => {
+    if (mobileSearchInput) mobileSearchInput.value = '';
+    loadCandidatesList();
+});
+desktopSearchInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') loadCandidatesList();
+});
+mobileSearchInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') loadCandidatesList();
+});
 async function deleteCandidate(userId) {
     try {
         const confirmDelete = window.confirm('Delete this candidate? This cannot be undone.');
@@ -429,13 +718,19 @@ async function loadRagStatus() {
     if (container) container.innerHTML = '<div class="text-center py-4 text-slate-400">Loading stats...</div>';
     
     try {
-        const response = await fetch(`${API_BASE}/api/admin/rag-status`, { credentials: 'include' });
+        const response = await fetch(`${API_BASE}/api/admin/rag-status?course_id=${encodeURIComponent(selectedCourseId)}`, { credentials: 'include' });
+        if (!response.ok) {
+            if (container) container.innerHTML = '<span class="text-rose-500 text-xs">Unauthorized. Please login as admin.</span>';
+            if (statusContainer) statusContainer.innerHTML = '';
+            return;
+        }
         const data = await response.json();
         
         // Populate Categories List (stats-container)
         if (container) {
             container.innerHTML = '';
-            data.categories.forEach(cat => {
+            const categories = Array.isArray(data.categories) ? data.categories : [];
+            categories.forEach(cat => {
                 const hasContent = cat.video_count > 0;
                 const div = document.createElement('div');
                 div.className = `p-3 rounded-xl border ${hasContent ? 'bg-white border-slate-200' : 'bg-slate-50 border-transparent'} flex items-center justify-between group hover:border-indigo-200 transition-colors`;
@@ -467,10 +762,11 @@ async function loadRagStatus() {
         // Populate RAG System Health (rag-status-container)
         if (statusContainer) {
             statusContainer.innerHTML = '';
-            if (data.index_stats) {
-                const totalVectors = (data.index_stats.total_vectors ?? data.index_stats.total_vector_count ?? 0);
-                const dimension = (data.index_stats.dimension ?? '—');
-                const fullnessRaw = (data.index_stats.fullness ?? data.index_stats.index_fullness);
+            const indexStats = (data && typeof data.index_stats === 'object') ? data.index_stats : null;
+            if (indexStats) {
+                const totalVectors = (indexStats.total_vectors ?? indexStats.total_vector_count ?? 0);
+                const dimension = (indexStats.dimension ?? '—');
+                const fullnessRaw = (indexStats.fullness ?? indexStats.index_fullness);
                 const fullness = (typeof fullnessRaw === 'number') ? ((fullnessRaw * 100).toFixed(1) + '%') : '—';
                 
                 const metrics = [
@@ -533,6 +829,7 @@ if (uploadForm) {
         formData.append('file', file);
         formData.append('category', category);
         formData.append('video_name', videoName);
+        formData.append('course_id', String(selectedCourseId));
         
         try {
             const response = await fetch(`${API_BASE}/api/admin/upload`, {
@@ -697,8 +994,8 @@ async function viewUserSessions(userId, candidateName = '') {
     try {
         modalCandidateName = candidateName || modalCandidateName || '';
         const url = isViewer
-            ? `${API_BASE}${ADMIN_API_PREFIX}/sessions/user/${userId}`
-            : `${API_BASE}/api/sessions/user/${userId}`;
+            ? `${API_BASE}${ADMIN_API_PREFIX}/sessions/user/${userId}?course_id=${encodeURIComponent(selectedCourseId)}`
+            : `${API_BASE}/api/sessions/user/${userId}?course_id=${encodeURIComponent(selectedCourseId)}`;
         const resp = await fetch(url, { credentials: 'include' });
         const data = await resp.json();
         if (!resp.ok) throw new Error(data.message || 'Failed to load user sessions');
@@ -1032,9 +1329,34 @@ document.getElementById('logout-btn')?.addEventListener('click', async () => {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    // Start on Dashboard
-    switchSection('dashboard');
+    // Initial load is handled by loadCourses() call at top level, 
+    // but better to call it here to ensure DOM is ready
+    // We already called loadCourses() at the top, but that might run before DOM is ready.
+    // Let's rely on this one.
+    loadCourses();
 });
+
+async function loadCourseCategories() {
+    try {
+        const resp = await fetch(`${API_BASE}/api/admin/courses/${encodeURIComponent(selectedCourseId)}/categories`, { credentials: 'include' });
+        if (resp.status === 401) {
+            window.location.href = 'login.html';
+            return;
+        }
+        const data = await resp.json();
+        const cats = data.categories || [];
+        const catSelect = document.getElementById('category');
+        if (catSelect) {
+            catSelect.innerHTML = '<option value="">Select Category...</option>';
+            cats.forEach(c => {
+                const opt = document.createElement('option');
+                opt.value = c.name;
+                opt.textContent = c.name;
+                catSelect.appendChild(opt);
+            });
+        }
+    } catch (e) {}
+}
 
 // File Input UI Enhancement
 const fileInput = document.getElementById('file-input');

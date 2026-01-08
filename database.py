@@ -575,15 +575,15 @@ class Database:
     # ========================================================================
     
     def create_upload_record(self, category: str, video_name: str, filename: str,
-                            chunks_created: int, uploaded_by: int) -> int:
+                            chunks_created: int, uploaded_by: int, course_id: int = 1) -> int:
         """Create upload record"""
         conn = self._get_connection()
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO uploads (category, video_name, filename, chunks_created, uploaded_by)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (category, video_name, filename, chunks_created, uploaded_by))
+            INSERT INTO uploads (category, video_name, filename, chunks_created, uploaded_by, course_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (category, video_name, filename, chunks_created, uploaded_by, course_id))
         
         upload_id = cursor.lastrowid
         conn.commit()
@@ -591,22 +591,22 @@ class Database:
         
         return upload_id
     
-    def get_uploads_by_category(self, category: str) -> List[Dict]:
-        """Get all uploads for a category"""
+    def get_uploads_by_category(self, category: str, course_id: int = 1) -> List[Dict]:
+        """Get all uploads for a category in a course"""
         conn = self._get_connection()
         cursor = conn.cursor()
         
         cursor.execute('''
-            SELECT * FROM uploads WHERE category = ? ORDER BY uploaded_at DESC
-        ''', (category,))
+            SELECT * FROM uploads WHERE category = ? AND course_id = ? ORDER BY uploaded_at DESC
+        ''', (category, course_id))
         
         rows = cursor.fetchall()
         conn.close()
         
         return [dict(row) for row in rows]
     
-    def get_upload_stats_by_category(self) -> Dict:
-        """Get upload statistics grouped by category"""
+    def get_upload_stats_by_category(self, course_id: int = 1) -> Dict:
+        """Get upload statistics grouped by category for a specific course"""
         conn = self._get_connection()
         cursor = conn.cursor()
         
@@ -616,8 +616,9 @@ class Database:
                 COUNT(DISTINCT video_name) as video_count,
                 SUM(chunks_created) as total_chunks
             FROM uploads
+            WHERE course_id = ?
             GROUP BY category
-        ''')
+        ''', (course_id,))
         
         rows = cursor.fetchall()
         conn.close()
@@ -636,15 +637,15 @@ class Database:
     # ========================================================================
     
     def create_session(self, user_id: int, category: str, difficulty: str,
-                      duration_minutes: int, mode: str = 'standard') -> int:
+                      duration_minutes: int, mode: str = 'standard', course_id: int = 1) -> int:
         """Create a new training session"""
         conn = self._get_connection()
         cursor = conn.cursor()
         
         cursor.execute('''
-            INSERT INTO sessions (user_id, category, difficulty, duration_minutes, mode)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (user_id, category, difficulty, duration_minutes, mode))
+            INSERT INTO sessions (user_id, category, difficulty, duration_minutes, mode, course_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (user_id, category, difficulty, duration_minutes, mode, course_id))
         
         session_id = cursor.lastrowid
         conn.commit()
@@ -692,16 +693,23 @@ class Database:
         conn.commit()
         conn.close()
     
-    def get_user_sessions(self, user_id: int) -> List[Dict]:
-        """Get all sessions for a user"""
+    def get_user_sessions(self, user_id: int, course_id: Optional[int] = None) -> List[Dict]:
+        """Get all sessions for a user, optionally filtered by course"""
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        cursor.execute('''
-            SELECT * FROM sessions
-            WHERE user_id = ?
-            ORDER BY started_at DESC
-        ''', (user_id,))
+        if course_id:
+            cursor.execute('''
+                SELECT * FROM sessions
+                WHERE user_id = ? AND course_id = ?
+                ORDER BY started_at DESC
+            ''', (user_id, course_id))
+        else:
+            cursor.execute('''
+                SELECT * FROM sessions
+                WHERE user_id = ?
+                ORDER BY started_at DESC
+            ''', (user_id,))
         
         rows = cursor.fetchall()
         conn.close()
@@ -719,6 +727,7 @@ class Database:
     def search_sessions(self, start_date: Optional[str] = None, end_date: Optional[str] = None,
                        min_score: Optional[float] = None, max_score: Optional[float] = None,
                        category: Optional[str] = None, role: Optional[str] = None, search_term: Optional[str] = None,
+                       course_id: Optional[int] = None,
                        page: int = 1, limit: int = 20) -> Tuple[List[Dict], int]:
         """Search sessions with multiple filters"""
         conn = self._get_connection()
@@ -742,6 +751,12 @@ class Database:
             WHERE 1=1
         '''
         
+        if course_id:
+            query += ' AND s.course_id = ?'
+            count_query += ' AND s.course_id = ?'
+            params.append(course_id)
+            count_params.append(course_id)
+
         if start_date:
             query += ' AND s.started_at >= ?'
             count_query += ' AND s.started_at >= ?'
@@ -1026,7 +1041,7 @@ class Database:
         conn.close()
         return inserted_ids
 
-    def get_recent_questions(self, user_id: int, category: str, limit: int = 100) -> List[str]:
+    def get_recent_questions(self, user_id: int, category: str, limit: int = 100, course_id: int = 1) -> List[str]:
         """Get recently asked questions for a user in a category to avoid duplicates"""
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -1035,10 +1050,10 @@ class Database:
             SELECT q.question_text
             FROM question_bank q
             JOIN sessions s ON q.session_id = s.id
-            WHERE s.user_id = ? AND s.category = ?
+            WHERE s.user_id = ? AND s.category = ? AND s.course_id = ?
             ORDER BY s.started_at DESC
             LIMIT ?
-        ''', (user_id, category, limit))
+        ''', (user_id, category, course_id, limit))
         
         rows = cursor.fetchall()
         conn.close()
@@ -1195,18 +1210,18 @@ class Database:
         
         return {row['action']: row['count'] for row in rows}
 
-    def get_dashboard_stats(self) -> Dict:
-        """Get overall dashboard statistics"""
+    def get_dashboard_stats(self, course_id: int = 1) -> Dict:
+        """Get overall dashboard statistics for a specific course"""
         conn = self._get_connection()
         cursor = conn.cursor()
         
         cursor.execute("SELECT COUNT(*) FROM users WHERE role = 'candidate'")
         total_candidates = cursor.fetchone()[0]
         
-        cursor.execute("SELECT COUNT(*) FROM sessions")
+        cursor.execute("SELECT COUNT(*) FROM sessions WHERE course_id = ?", (course_id,))
         total_sessions = cursor.fetchone()[0]
         
-        cursor.execute("SELECT AVG(overall_score) FROM sessions WHERE overall_score IS NOT NULL")
+        cursor.execute("SELECT AVG(overall_score) FROM sessions WHERE overall_score IS NOT NULL AND course_id = ?", (course_id,))
         avg_score = cursor.fetchone()[0]
         
         conn.close()
@@ -1217,8 +1232,8 @@ class Database:
             'avg_score': round(avg_score, 1) if avg_score else 0.0
         }
 
-    def get_user_stats(self, user_id: int) -> Dict:
-        """Get statistics for a specific user"""
+    def get_user_stats(self, user_id: int, course_id: int = 1) -> Dict:
+        """Get statistics for a specific user in a course"""
         conn = self._get_connection()
         cursor = conn.cursor()
         
@@ -1228,17 +1243,17 @@ class Database:
                 COUNT(*) as total,
                 AVG(overall_score) as avg_score
             FROM sessions 
-            WHERE user_id = ?
-        ''', (user_id,))
+            WHERE user_id = ? AND course_id = ?
+        ''', (user_id, course_id))
         basic = cursor.fetchone()
         
         # Difficulty breakdown
         cursor.execute('''
             SELECT difficulty, COUNT(*) as count
             FROM sessions
-            WHERE user_id = ?
+            WHERE user_id = ? AND course_id = ?
             GROUP BY difficulty
-        ''', (user_id,))
+        ''', (user_id, course_id))
         diff_rows = cursor.fetchall()
         
         conn.close()
@@ -1251,16 +1266,16 @@ class Database:
             'sessions_by_difficulty': difficulty_stats
         }
 
-    def get_global_stats(self, role: Optional[str] = None) -> Dict:
-        """Get global statistics for dashboard, optionally filtered by user role"""
+    def get_global_stats(self, role: Optional[str] = None, course_id: int = 1) -> Dict:
+        """Get global statistics for dashboard, optionally filtered by user role, for a specific course"""
         conn = self._get_connection()
         cursor = conn.cursor()
         
         # Base WHERE clause for sessions
         session_join = ""
-        session_where = "WHERE 1=1"
+        session_where = "WHERE s.course_id = ?"
         users_where = "WHERE role = 'candidate'"
-        params = []
+        params = [course_id]
         
         if role:
             session_join = "JOIN users u ON s.user_id = u.id"
@@ -1268,8 +1283,10 @@ class Database:
             users_where = "WHERE role = ?"
             params.append(role)
         
-        # 1. Total Users (matching role)
-        cursor.execute(f"SELECT COUNT(*) FROM users {users_where}", params if role else [])
+        # 1. Total Users (matching role) - Users are global, not per course (usually)
+        # If we want to count users who have taken this course, that's different.
+        # For now, let's keep total users global as per original logic.
+        cursor.execute(f"SELECT COUNT(*) FROM users {users_where}", [role] if role else [])
         total_candidates = cursor.fetchone()[0]
         
         # 2. Completed Sessions
@@ -1292,3 +1309,92 @@ class Database:
             'average_score': round(avg_score, 1) if avg_score else 0.0,
             'active_today': active_today
         }
+
+    # ========================================================================
+    # COURSE MANAGEMENT
+    # ========================================================================
+
+    def get_course_by_id(self, course_id: int) -> Optional[Dict]:
+        """Get course by ID"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM courses WHERE id = ?', (course_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def get_course_by_slug(self, slug: str) -> Optional[Dict]:
+        """Get course by slug"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM courses WHERE slug = ?', (slug,))
+        row = cursor.fetchone()
+        conn.close()
+        return dict(row) if row else None
+
+    def list_courses(self) -> List[Dict]:
+        """List all available courses"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM courses ORDER BY name ASC')
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+
+    def get_course_categories(self, course_id: int) -> List[Dict]:
+        """Get categories for a specific course"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM course_categories WHERE course_id = ? ORDER BY display_order ASC', (course_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+        
+    def create_course(self, name: str, slug: str, description: str = "") -> int:
+        """Create a new course"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO courses (name, slug, description) VALUES (?, ?, ?)', (name, slug, description))
+        cid = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return cid
+
+    def add_course_category(self, course_id: int, name: str, display_order: int = 0) -> int:
+        """Add a category to a course"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('INSERT INTO course_categories (course_id, name, display_order) VALUES (?, ?, ?)', (course_id, name, display_order))
+        cat_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return cat_id
+    
+    def delete_course(self, course_id: int):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('SELECT id FROM sessions WHERE course_id = ?', (course_id,))
+            rows = cursor.fetchall()
+            conn.close()
+        except Exception:
+            conn.close()
+            rows = []
+        for r in rows:
+            try:
+                self.delete_session(int(dict(r)['id']))
+            except Exception:
+                continue
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('DELETE FROM uploads WHERE course_id = ?', (course_id,))
+        except Exception:
+            pass
+        try:
+            cursor.execute('DELETE FROM course_categories WHERE course_id = ?', (course_id,))
+        except Exception:
+            pass
+        cursor.execute('DELETE FROM courses WHERE id = ?', (course_id,))
+        conn.commit()
+        conn.close()

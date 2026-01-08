@@ -5,6 +5,7 @@ from sync_pinecone_full import sync_pinecone_full
 from utils.decorators import admin_required, role_required
 from utils.cache import cache_get, cache_set
 from extensions import db, limiter
+from services.audit_service import log_audit
 from import_users import import_users_from_csv
 import tempfile
 import os
@@ -28,6 +29,7 @@ def upload_content_route():
     file = request.files['file']
     category = request.form.get('category')
     video_name = request.form.get('video_name')
+    course_id = request.form.get('course_id', 1, type=int)
     
     if not file or not category or not video_name:
         return jsonify({'error': 'missing_fields'}), 400
@@ -40,7 +42,7 @@ def upload_content_route():
         content = file.read().decode('utf-8')
         
         # Process and upload to Pinecone
-        result = process_and_upload(content, category, video_name)
+        result = process_and_upload(content, category, video_name, course_id=course_id)
         
         # Save to database
         db.create_upload_record(
@@ -48,14 +50,16 @@ def upload_content_route():
             video_name=video_name,
             filename=file.filename,
             chunks_created=result['chunks'],
-            uploaded_by=session['user_id']
+            uploaded_by=session['user_id'],
+            course_id=course_id
         )
         
         return jsonify({
             'success': True,
             'category': category,
             'video_name': video_name,
-            'chunks': result['chunks']
+            'chunks': result['chunks'],
+            'course_id': course_id
         })
         
     except Exception as e:
@@ -167,6 +171,7 @@ def dashboard_route():
     limit = request.args.get('limit', 10, type=int)
     search = request.args.get('search')
     role_filter = request.args.get('role', 'candidate') # Default to candidate if not specified
+    course_id = request.args.get('course_id', 1, type=int)
     
     # Get users by role (default 'candidate')
     raw_users, total_count = list_users(role=role_filter, page=page, limit=limit, search=search)
@@ -175,7 +180,7 @@ def dashboard_route():
     users_with_stats = []
     for u in raw_users:
         try:
-            sessions = db.get_user_sessions(u['id'])
+            sessions = db.get_user_sessions(u['id'], course_id=course_id)
             total_sessions = len(sessions)
             completed = [s for s in sessions if (s.get('status') == 'completed')]
             completed_count = len(completed)
@@ -249,7 +254,7 @@ def dashboard_route():
             })
     
     # Get stats filtered by the same role
-    stats = db.get_global_stats(role=role_filter)
+    stats = db.get_global_stats(role=role_filter, course_id=course_id)
     
     return jsonify({
         'candidates': users_with_stats,
@@ -273,13 +278,72 @@ def sync_content_route():
     except Exception as e:
         return jsonify({'error': 'sync_failed', 'message': str(e)}), 500
 
+@admin_bp.route('/courses', methods=['GET'])
+@admin_required
+def list_courses_route():
+    courses = db.list_courses()
+    return jsonify({'courses': courses})
+
+@admin_bp.route('/courses', methods=['POST'])
+@admin_required
+def create_course_route():
+    data = request.json or {}
+    name = data.get('name')
+    slug = data.get('slug')
+    description = data.get('description') or ""
+    if not name or not slug:
+        return jsonify({'error': 'missing_fields'}), 400
+    try:
+        cid = db.create_course(name, slug, description)
+        return jsonify({'success': True, 'course_id': cid})
+    except Exception as e:
+        return jsonify({'error': 'create_failed', 'message': str(e)}), 500
+        
+@admin_bp.route('/courses/<int:course_id>', methods=['DELETE'])
+@admin_required
+def delete_course_route(course_id):
+    try:
+        course = db.get_course_by_id(course_id)
+        if not course:
+            return jsonify({'error': 'not_found'}), 404
+        db.delete_course(course_id)
+        try:
+            details = f"Deleted course '{course.get('name')}' ({course.get('slug')})"
+            log_audit('course_deleted', 'course', course_id, details)
+        except Exception:
+            pass
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': 'delete_failed', 'message': str(e)}), 500
+
+@admin_bp.route('/courses/<int:course_id>/categories', methods=['GET'])
+@admin_required
+def list_course_categories_route(course_id):
+    cats = db.get_course_categories(course_id)
+    return jsonify({'categories': cats})
+
+@admin_bp.route('/courses/<int:course_id>/categories', methods=['POST'])
+@admin_required
+def add_course_category_route(course_id):
+    data = request.json or {}
+    name = data.get('name')
+    display_order = int(data.get('display_order', 0))
+    if not name:
+        return jsonify({'error': 'missing_name'}), 400
+    try:
+        cat_id = db.add_course_category(course_id, name, display_order)
+        return jsonify({'success': True, 'category_id': cat_id})
+    except Exception as e:
+        return jsonify({'error': 'create_failed', 'message': str(e)}), 500
+
 @admin_bp.route('/dashboard/stats', methods=['GET'])
 @admin_required
 def get_dashboard_stats():
     # Always compute fresh stats to avoid stale cache during active monitoring/tests
     role = request.args.get('role')
+    course_id = request.args.get('course_id', 1, type=int)
     # We only use get_global_stats now as it's more comprehensive and supports role filtering
-    global_stats = db.get_global_stats(role=role)
+    global_stats = db.get_global_stats(role=role, course_id=course_id)
     
     # Backwards compatibility keys if frontend expects them from get_dashboard_stats()
     stats = {
@@ -295,7 +359,8 @@ def get_dashboard_stats():
 @role_required(['viewer', 'admin'])
 def viewer_get_dashboard_stats():
     role = request.args.get('role', 'candidate')
-    global_stats = db.get_global_stats(role=role)
+    course_id = request.args.get('course_id', 1, type=int)
+    global_stats = db.get_global_stats(role=role, course_id=course_id)
     stats = {
         'total_candidates': global_stats['total_candidates'],
         'total_sessions': global_stats['completed_sessions'],
@@ -311,11 +376,12 @@ def viewer_dashboard_route():
     limit = request.args.get('limit', 10, type=int)
     search = request.args.get('search')
     role_filter = request.args.get('role', 'candidate')
+    course_id = request.args.get('course_id', 1, type=int)
     raw_users, total_count = list_users(role=role_filter, page=page, limit=limit, search=search)
     users_with_stats = []
     for u in raw_users:
         try:
-            sessions = db.get_user_sessions(u['id'])
+            sessions = db.get_user_sessions(u['id'], course_id=course_id)
             total_sessions = len(sessions)
             completed = [s for s in sessions if (s.get('status') == 'completed')]
             completed_count = len(completed)
@@ -378,7 +444,7 @@ def viewer_dashboard_route():
                 'category_performance': {},
                 'difficulty_performance': {}
             })
-    stats = db.get_global_stats(role=role_filter)
+    stats = db.get_global_stats(role=role_filter, course_id=course_id)
     return jsonify({
         'candidates': users_with_stats,
         'pagination': {
@@ -440,6 +506,7 @@ def export_sessions_csv():
     category = request.args.get('category')
     role = request.args.get('role')
     search = request.args.get('search')
+    course_id = request.args.get('course_id', 1, type=int)
     while True:
         rows, total = db.search_sessions(
             start_date=start_date,
@@ -449,6 +516,7 @@ def export_sessions_csv():
             category=category,
             role=role,
             search_term=search,
+            course_id=course_id,
             page=page,
             limit=limit
         )
@@ -569,7 +637,8 @@ def rag_status():
     """Return content coverage per category and missing areas + Pinecone Index Stats"""
     try:
         # Get category coverage stats (DB)
-        stats = db.get_upload_stats_by_category()
+        course_id = request.args.get('course_id', 1, type=int)
+        stats = db.get_upload_stats_by_category(course_id=course_id)
         categories = []
         for name, data in stats.items():
             categories.append({
@@ -581,8 +650,12 @@ def rag_status():
         
         # Also include categories with zero coverage
         known = set(stats.keys())
-        from routes.training_routes import CATEGORIES
-        for name in CATEGORIES:
+        try:
+            course_cats = db.get_course_categories(course_id)
+            course_cat_names = [c.get('name') for c in course_cats]
+        except Exception:
+            course_cat_names = []
+        for name in course_cat_names:
             if name not in known:
                 categories.append({
                     'category': name,
@@ -610,12 +683,14 @@ def kpi():
         category = request.args.get('category')
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
+        course_id = request.args.get('course_id', 1, type=int)
         # Use search_sessions to compute scoped KPIs
         sessions, _ = db.search_sessions(
             start_date=start_date,
             end_date=end_date,
             category=category,
             role=role,
+            course_id=course_id,
             page=1,
             limit=100000
         )
@@ -646,11 +721,13 @@ def viewer_kpi():
         category = request.args.get('category')
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
+        course_id = request.args.get('course_id', 1, type=int)
         sessions, _ = db.search_sessions(
             start_date=start_date,
             end_date=end_date,
             category=category,
             role=role,
+            course_id=course_id,
             page=1,
             limit=100000
         )
@@ -708,6 +785,7 @@ def search_sessions_route():
     max_score = request.args.get('max_score', type=float)
     category = request.args.get('category')
     role = request.args.get('role')
+    course_id = request.args.get('course_id', 1, type=int)
     
     # Use existing db helper to search sessions
     sessions, total = db.search_sessions(
@@ -719,7 +797,8 @@ def search_sessions_route():
         min_score=min_score,
         max_score=max_score,
         category=category,
-        role=role
+        role=role,
+        course_id=course_id
     )
     
     return jsonify({
@@ -745,6 +824,7 @@ def viewer_search_sessions_route():
     max_score = request.args.get('max_score', type=float)
     category = request.args.get('category')
     role = request.args.get('role')
+    course_id = request.args.get('course_id', 1, type=int)
     sessions, total = db.search_sessions(
         search_term=search,
         page=page,
@@ -754,7 +834,8 @@ def viewer_search_sessions_route():
         min_score=min_score,
         max_score=max_score,
         category=category,
-        role=role
+        role=role,
+        course_id=course_id
     )
     return jsonify({
         'sessions': sessions,
@@ -770,7 +851,8 @@ def viewer_search_sessions_route():
 @role_required(['viewer', 'admin'])
 def viewer_get_user_sessions_route(user_id: int):
     try:
-        sessions = db.get_user_sessions(user_id)
+        course_id = request.args.get('course_id', 1, type=int)
+        sessions = db.get_user_sessions(user_id, course_id=course_id)
         return jsonify({'sessions': sessions})
     except Exception as e:
         logger.error(f"Failed to get user sessions for viewer: {e}")
@@ -781,7 +863,8 @@ def viewer_get_user_sessions_route(user_id: int):
 def get_categories_stats_route():
     """Get upload statistics by category"""
     try:
-        stats = db.get_upload_stats_by_category()
+        course_id = request.args.get('course_id', 1, type=int)
+        stats = db.get_upload_stats_by_category(course_id=course_id)
         
         # Format for frontend
         categories_list = []

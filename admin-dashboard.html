@@ -4,21 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - AHL Sales Trainer</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+    <link href="/static/css/output.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Inter', 'sans-serif'] },
-                    colors: {
-                        indigo: { 50: '#eef2ff', 100: '#e0e7ff', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca' },
-                        slate: { 50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a' }
-                    }
-                }
-            }
-        }
-    </script>
     <style>
         body { font-family: 'Inter', sans-serif; }
         .gradient-bg { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); }
@@ -62,6 +53,10 @@
                 <svg class="w-5 h-5 text-slate-400 group-hover:text-indigo-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                 Settings
             </button>
+            <a href="/trainer.html" target="_blank" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-gray-50 hover:text-indigo-600 font-medium transition-colors group">
+                <svg class="w-5 h-5 text-slate-400 group-hover:text-indigo-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                View as Candidate
+            </a>
         </nav>
 
         <!-- User Profile -->
@@ -154,7 +149,14 @@
                         <button id="tab-sessions" class="px-4 py-2 text-sm font-medium text-slate-500 hover:text-indigo-600 border-b-2 border-transparent hover:border-indigo-300 transition-colors">All Sessions</button>
                         
                         <div class="ml-auto flex items-center gap-2">
-                            <label for="dashboard-role-filter" class="text-xs font-medium text-slate-500">View As:</label>
+                            <label for="course-select" class="text-xs font-medium text-slate-500">Course:</label>
+                            <div class="flex items-center gap-1">
+                                <select id="course-select" class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none w-32" onchange="switchCourse(this.value)"></select>
+                                <button onclick="openCourseManager()" class="p-1 text-slate-400 hover:text-indigo-600 transition-colors" title="Manage Courses">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                                </button>
+                            </div>
+                            <label for="dashboard-role-filter" class="text-xs font-medium text-slate-500 ml-2">View As:</label>
                             <select id="dashboard-role-filter" class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs focus:ring-2 focus:ring-indigo-500 outline-none" onchange="loadDashboard()">
                                 <option value="candidate">Candidates</option>
                                 <option value="admin">Admins</option>
@@ -329,26 +331,19 @@
                             <form id="upload-form" class="space-y-6">
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div class="space-y-2">
-                                        <label for="category" class="text-sm font-semibold text-slate-700">Category</label>
-                                        <div class="relative">
-                                            <select id="category" required class="w-full appearance-none pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none">
-                                                <option value="">Select Category...</option>
-                                                <option value="Pre Consultation">Pre Consultation</option>
-                                                <option value="Consultation Series">Consultation Series</option>
-                                                <option value="Sales Objections">Sales Objections</option>
-                                                <option value="After Fixing Objection">After Fixing Objection</option>
-                                                <option value="Full Wig Consultation">Full Wig Consultation</option>
-                                                <option value="Hairline Consultation">Hairline Consultation</option>
-                                                <option value="Types of Patches">Types of Patches</option>
-                                                <option value="Upselling / Cross Selling">Upselling / Cross Selling</option>
-                                                <option value="Retail Sales">Retail Sales</option>
-                                                <option value="SMP Sales">SMP Sales</option>
-                                                <option value="Sales Follow up">Sales Follow up</option>
-                                                <option value="General Sales">General Sales</option>
-                                            </select>
-                                            <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-500">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                                        <label for="category" class="text-sm font-semibold text-slate-700">Module (Category)</label>
+                                        <div class="flex gap-2">
+                                            <div class="relative flex-1">
+                                                <select id="category" required class="w-full appearance-none pl-4 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:ring-2 focus:ring-indigo-500 outline-none">
+                                                    <option value="">Select Category...</option>
+                                                </select>
+                                                <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-500">
+                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                                                </div>
                                             </div>
+                                            <button type="button" onclick="openCurrentCourseCategoryManager()" class="px-3 bg-indigo-50 text-indigo-600 rounded-xl hover:bg-indigo-100 transition-colors border border-indigo-100" title="Add New Category">
+                                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                                            </button>
                                         </div>
                                     </div>
                                     
@@ -518,7 +513,7 @@
                 </div>
                 <button id="close-modal" class="text-white/80 hover:text-white hover:bg-white/10 rounded-full p-2 transition"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
             </div>
-            <div class="p-8 overflow-y-auto grow custom-scrollbar">
+            <div class="p-4 md:p-8 overflow-y-auto grow custom-scrollbar">
                 <div id="modal-content"><div class="text-center py-20"><div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-slate-200 border-t-indigo-600"></div><p class="mt-4 text-slate-500 font-medium">Loading report...</p></div></div>
                 <div class="mt-10 border-t border-gray-100 pt-8">
                     <h3 class="text-lg font-bold mb-4 text-slate-800 flex items-center gap-2"><span>📝</span> Admin Notes</h3>
@@ -529,6 +524,86 @@
                     </div>
                     <div class="mt-4 flex justify-end">
                         <button id="save-notes-btn" class="px-6 py-2.5 bg-indigo-600 text-white font-semibold rounded-xl hover:bg-indigo-700 shadow-md shadow-indigo-100 flex items-center gap-2">Save Notes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Course Manager Modal -->
+    <div id="course-manager-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-white">
+                <h3 class="font-bold text-lg text-slate-800">Manage Courses</h3>
+                <button onclick="closeCourseManager()" class="p-2 hover:bg-gray-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6 bg-slate-50 space-y-6">
+                <!-- Create Course Form -->
+                <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                    <h4 class="text-sm font-bold text-slate-700 mb-3 uppercase tracking-wide">Create New Course</h4>
+                    <form id="create-course-form" class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Course Name</label>
+                                <input type="text" id="new-course-name" placeholder="e.g. Phone Videography" required
+                                    class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-slate-500 mb-1">Slug (URL friendly)</label>
+                                <input type="text" id="new-course-slug" placeholder="e.g. phone-video" required
+                                    class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-500 mb-1">Description</label>
+                            <input type="text" id="new-course-desc" placeholder="Short description..."
+                                class="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                        </div>
+                        <div class="flex justify-end">
+                            <button type="submit" id="create-course-btn" class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-200">
+                                Create Course
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Course List -->
+                <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                    <div class="px-5 py-3 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
+                        <h4 class="text-sm font-bold text-slate-700 uppercase tracking-wide">Existing Courses</h4>
+                    </div>
+                    <div id="course-manager-list" class="divide-y divide-gray-100">
+                        <!-- Populated by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Category Manager Modal -->
+    <div id="category-manager-modal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl w-full max-w-lg max-h-[80vh] shadow-2xl flex flex-col overflow-hidden">
+            <div class="p-4 border-b border-gray-100 flex justify-between items-center bg-white">
+                <div>
+                    <h3 class="font-bold text-lg text-slate-800">Manage Modules</h3>
+                    <p id="cat-manager-course-name" class="text-xs text-slate-500">For Course: ...</p>
+                </div>
+                <button onclick="closeCategoryManager()" class="p-2 hover:bg-gray-100 rounded-full transition-colors text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6 bg-slate-50 space-y-6">
+                <!-- Add Category Form -->
+                <form id="add-category-form" class="flex gap-2">
+                    <input type="text" id="new-cat-name" placeholder="New Module Name" required
+                        class="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                    <button type="submit" id="add-cat-btn" class="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 whitespace-nowrap">
+                        Add Module
+                    </button>
+                </form>
+
+                <!-- Category List -->
+                <div class="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
+                    <div id="category-manager-list" class="divide-y divide-gray-100 max-h-[300px] overflow-y-auto">
+                        <!-- Populated by JS -->
                     </div>
                 </div>
             </div>

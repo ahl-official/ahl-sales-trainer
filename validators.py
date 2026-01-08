@@ -131,7 +131,6 @@ class StartSessionRequest:
     difficulty: str
     duration_minutes: int
     
-    VALID_CATEGORIES = UploadRequest.VALID_CATEGORIES
     VALID_DIFFICULTIES = ['trial', 'basics', 'field-ready', 'adaptive']
     VALID_DURATIONS = [5, 10, 15, 20, 30]
     
@@ -139,8 +138,8 @@ class StartSessionRequest:
         """Validate session start fields"""
         errors = []
         
-        # Category validation
-        if self.category not in self.VALID_CATEGORIES:
+        # Category validation - Allow any non-empty string as categories are now dynamic
+        if not self.category or not isinstance(self.category, str):
             errors.append(ValidationError('category', 'Invalid category'))
         
         # Difficulty validation

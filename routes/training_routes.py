@@ -12,34 +12,52 @@ logger = get_logger('training_routes')
 
 training_bp = Blueprint('training', __name__)
 
-CATEGORIES = [
-    'Pre Consultation',
-    'Consultation Series',
-    'Sales Objections',
-    'After Fixing Objection',
-    'Full Wig Consultation',
-    'Hairline Consultation',
-    'Types of Patches',
-    'Upselling / Cross Selling',
-    'Retail Sales',
-    'SMP Sales',
-    'Sales Follow up',
-    'General Sales'
-]
+@training_bp.route('/courses', methods=['GET'])
+@login_required
+def get_courses():
+    try:
+        courses = db.list_courses()
+        # Filter sensitive data if necessary, but list_courses returns id, name, slug, description
+        return jsonify({'courses': courses})
+    except Exception as e:
+        logger.error(f"Failed to get courses: {e}")
+        return jsonify({'error': 'server_error'}), 500
 
 @training_bp.route('/categories', methods=['GET'])
 @login_required
 def get_categories():
     try:
-        stats = db.get_upload_stats_by_category()
+        course_id = request.args.get('course_id', 1, type=int)
+        
+        # Get categories configured for this course
+        course_cats = db.get_course_categories(course_id)
+        # If no categories configured (legacy), fallback to getting all categories that have uploads
+        if not course_cats:
+            stats = db.get_upload_stats_by_category(course_id=course_id)
+            categories_list = []
+            for name, data in stats.items():
+                categories_list.append({
+                    'name': name,
+                    'video_count': data.get('video_count') or 0,
+                    'chunk_count': data.get('total_chunks') or 0
+                })
+            # Sort by name
+            categories_list.sort(key=lambda x: x['name'])
+            return jsonify({'categories': categories_list})
+
+        # Get stats for these categories
+        stats = db.get_upload_stats_by_category(course_id=course_id)
         categories_list = []
-        for name in CATEGORIES:
+        
+        for cat in course_cats:
+            name = cat['name']
             data = stats.get(name, {'video_count': 0, 'total_chunks': 0})
             categories_list.append({
                 'name': name,
                 'video_count': data.get('video_count') or 0,
                 'chunk_count': data.get('total_chunks') or 0
             })
+            
         return jsonify({'categories': categories_list})
     except Exception as e:
         logger.error(f"Failed to get categories: {e}")
@@ -62,6 +80,8 @@ def get_deepgram_token():
 def start_session():
     try:
         data = request.json
+        course_id = data.get('course_id', 1)
+        
         req = StartSessionRequest(
             category=data.get('category'),
             difficulty=data.get('difficulty'),
@@ -71,7 +91,7 @@ def start_session():
         
         # Handle Adaptive Difficulty
         if req.difficulty == 'adaptive':
-            req.difficulty = determine_adaptive_difficulty(session['user_id'], req.category)
+            req.difficulty = determine_adaptive_difficulty(session['user_id'], req.category, course_id=course_id)
             logger.info(f"Adaptive difficulty set to {req.difficulty} for user {session['user_id']}")
         
         mode = data.get('mode', 'standard')
@@ -81,12 +101,13 @@ def start_session():
             req.category,
             req.difficulty,
             req.duration_minutes,
-            mode
+            mode,
+            course_id=course_id
         )
         
         # Prepare questions in background (or foreground for now)
         # Using the new prepare_questions from service
-        prepare_questions(session_id, req.category, req.difficulty, req.duration_minutes)
+        prepare_questions(session_id, req.category, req.difficulty, req.duration_minutes, course_id=course_id)
         
         return jsonify({
             'success': True,
@@ -303,14 +324,16 @@ def get_report(session_id):
     try:
         logger.info(f"Generating report for session {session_id} user {session['user_id']}")
         user = db.get_user_by_id(session['user_id'])
+        role = (user or {}).get('role')
         
         # Determine which report builder to use
         report_html = None
         try:
-            if user and user.get('role') == 'admin':
+            if role in ['admin', 'viewer']:
                 report_html = build_enhanced_report_html(db, session_id)
             else:
-                report_html = build_enhanced_report_html(db, session_id)
+                report_html = build_candidate_report_html(db, session_id)
+            # If builder returned falsy, defer to fallback below
         except Exception as build_err:
             logger.error(f"Primary report builder failed: {build_err}", exc_info=True)
             report_html = None
@@ -331,31 +354,47 @@ def get_report(session_id):
                 for q in qs:
                     ev = by_qid.get(q['id']) or {}
                     ua = ev.get('user_answer') or '—'
-                    # Use expected answer from question bank
                     exp = q.get('expected_answer') or '—'
-                    src = q.get('source') or '—'
-                    score = ev.get('overall_score')
-                    score_str = f"{score}/10" if score is not None else 'N/A'
-                    rows_html.append(f"<tr class='border-t'><td class='p-3 align-top text-sm'>{q.get('question_text') or ''}</td><td class='p-3 align-top text-sm'>{ua}</td><td class='p-3 align-top text-sm'>{exp}</td><td class='p-3 align-top text-sm'>{src}</td><td class='p-3 align-top text-sm text-center'>{score_str}</td></tr>")
+                    if role in ['admin', 'viewer']:
+                        src = q.get('source') or '—'
+                        score = ev.get('overall_score')
+                        score_str = f"{score}/10" if score is not None else 'N/A'
+                        rows_html.append(f"<tr class='border-t'><td class='p-3 align-top text-sm'>{q.get('question_text') or ''}</td><td class='p-3 align-top text-sm'>{ua}</td><td class='p-3 align-top text-sm'>{exp}</td><td class='p-3 align-top text-sm'>{src}</td><td class='p-3 align-top text-sm text-center'>{score_str}</td></tr>")
+                    else:
+                        rows_html.append(f"<tr class='border-t'><td class='p-3 align-top text-sm'>{q.get('question_text') or ''}</td><td class='p-3 align-top text-sm'>{ua}</td><td class='p-3 align-top text-sm'>{exp}</td></tr>")
                 
                 user_display = (sess or {}).get('username') or 'Candidate'
                 cat = (sess or {}).get('category') or '—'
                 diff = (sess or {}).get('difficulty') or '—'
                 
-                table_html = """
-                <table class='w-full text-left mt-6 border border-gray-200 rounded table-auto'>
-                    <thead class='bg-gray-100 text-gray-700'>
-                        <tr>
-                            <th class='p-3 text-sm font-semibold'>Question</th>
-                            <th class='p-3 text-sm font-semibold'>Your Answer</th>
-                            <th class='p-3 text-sm font-semibold'>Expected Answer</th>
-                            <th class='p-3 text-sm font-semibold'>Source</th>
-                            <th class='p-3 text-sm font-semibold text-center'>Score</th>
-                        </tr>
-                    </thead>
-                    <tbody>""" + "".join(rows_html) + """</tbody>
-                </table>
-                """
+                if role in ['admin', 'viewer']:
+                    table_html = """
+                    <table class='w-full text-left mt-6 border border-gray-200 rounded table-auto'>
+                        <thead class='bg-gray-100 text-gray-700'>
+                            <tr>
+                                <th class='p-3 text-sm font-semibold'>Question</th>
+                                <th class='p-3 text-sm font-semibold'>Your Answer</th>
+                                <th class='p-3 text-sm font-semibold'>Expected Answer</th>
+                                <th class='p-3 text-sm font-semibold'>Source</th>
+                                <th class='p-3 text-sm font-semibold text-center'>Score</th>
+                            </tr>
+                        </thead>
+                        <tbody>""" + "".join(rows_html) + """</tbody>
+                    </table>
+                    """
+                else:
+                    table_html = """
+                    <table class='w-full text-left mt-6 border border-gray-200 rounded table-auto'>
+                        <thead class='bg-gray-100 text-gray-700'>
+                            <tr>
+                                <th class='p-3 text-sm font-semibold'>Question</th>
+                                <th class='p-3 text-sm font-semibold'>Your Answer</th>
+                                <th class='p-3 text-sm font-semibold'>Expected Answer</th>
+                            </tr>
+                        </thead>
+                        <tbody>""" + "".join(rows_html) + """</tbody>
+                    </table>
+                    """
                 
                 report_html = f"""
                 <div class='space-y-4'>
@@ -376,7 +415,6 @@ def get_report(session_id):
                 """
             except Exception as fallback_err:
                 logger.error(f"Fallback report generation failed: {fallback_err}", exc_info=True)
-                # Ultimate fallback - just text
                 report_html = "<div class='text-red-500'>Report generation failed. Please contact admin.</div>"
         
         # Extract overall score from meta tag if present
@@ -412,6 +450,8 @@ def get_report(session_id):
         
         # Also return session data for notes
         session_data = db.get_session(session_id)
+        if role not in ['admin', 'viewer'] and session_data:
+            session_data['overall_score'] = None
         
         return jsonify({
             'success': True,
@@ -494,7 +534,8 @@ def prepare_questions_route():
 def get_candidate_progress():
     try:
         user_id = session['user_id']
-        sessions = db.get_user_sessions(user_id)
+        course_id = request.args.get('course_id', 1, type=int)
+        sessions = db.get_user_sessions(user_id, course_id=course_id)
         
         completed_sessions = [s for s in sessions if s.get('status') == 'completed']
         count = len(completed_sessions)

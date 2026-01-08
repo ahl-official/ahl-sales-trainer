@@ -33,6 +33,8 @@ if not PINECONE_API_KEY or not PINECONE_INDEX_HOST:
 
 def sync_pinecone_full():
     print("Starting Full Pinecone Synchronization (Add & Remove)...")
+    if 'localhost' in (PINECONE_INDEX_HOST or '').lower():
+        return {'error': 'Invalid PINECONE_INDEX_HOST. Set to your Pinecone index URL (https://...pinecone.io).'}
     
     # Initialize DB
     db = Database('data/sales_trainer.db')
@@ -44,7 +46,7 @@ def sync_pinecone_full():
         stats = index.describe_index_stats()
     except Exception as e:
         print(f"Error connecting to Pinecone: {e}")
-        return {'error': str(e)}
+        return {'error': f"{e}. Ensure PINECONE_INDEX_HOST is the full index URL from the Pinecone dashboard (https://...pinecone.io)."}
 
     pinecone_namespaces = stats.get('namespaces', {})
     print(f"Found {len(pinecone_namespaces)} namespaces in Pinecone.")

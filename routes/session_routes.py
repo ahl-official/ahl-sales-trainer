@@ -1,4 +1,4 @@
-from flask import Blueprint, send_file, session, jsonify
+from flask import Blueprint, send_file, session, jsonify, request
 from utils.decorators import login_required
 from extensions import db
 from config_logging import get_logger
@@ -16,10 +16,18 @@ def export_pdf(session_id):
             return jsonify({'error': 'not_found'}), 404
         
         # Verify ownership or admin based on session data
-        if session_data['user_id'] != session.get('user_id') and session.get('role') != 'admin':
+        role = session.get('role')
+        if session_data['user_id'] != session.get('user_id') and role not in ['admin', 'viewer']:
             return jsonify({'error': 'unauthorized'}), 403
         
         report_data = db.get_report(session_id) or {'report_html': ''}
+        if not report_data.get('report_html'):
+            try:
+                from report_builder import build_enhanced_report_html, build_candidate_report_html
+                html = build_enhanced_report_html(db, session_id) if role in ['admin', 'viewer'] else build_candidate_report_html(db, session_id)
+                report_data['report_html'] = html or ''
+            except Exception:
+                report_data['report_html'] = ''
         output_path = f"/tmp/session_report_{session_id}.pdf"
         
         from app import generate_session_pdf
@@ -46,7 +54,10 @@ def get_user_sessions_route(user_id):
             return jsonify({'error': 'unauthorized'}), 403
             
     try:
-        sessions = db.get_user_sessions(user_id)
+        # Get course_id from query params, default to 1
+        course_id = request.args.get('course_id', 1, type=int)
+        
+        sessions = db.get_user_sessions(user_id, course_id=course_id)
         return jsonify({'sessions': sessions})
     except Exception as e:
         logger.error(f"Failed to get user sessions: {e}")

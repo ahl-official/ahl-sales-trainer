@@ -15,6 +15,12 @@ OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 PINECONE_API_KEY = os.environ.get('PINECONE_API_KEY', '')
 PINECONE_INDEX_HOST = os.environ.get('PINECONE_INDEX_HOST', '')
 
+def _get_pinecone_index():
+    if not PINECONE_INDEX_HOST or 'localhost' in PINECONE_INDEX_HOST.lower():
+        raise RuntimeError("Invalid PINECONE_INDEX_HOST. Set to your Pinecone index URL (https://...pinecone.io).")
+    pc = Pinecone(api_key=PINECONE_API_KEY)
+    return pc.Index(host=PINECONE_INDEX_HOST)
+
 def create_embeddings_batch(texts: List[str]) -> List[List[float]]:
     """Create embeddings for batch of texts using OpenAI"""
     if not texts:
@@ -42,22 +48,36 @@ def create_embeddings_batch(texts: List[str]) -> List[List[float]]:
         logger.error(f"Failed to create embeddings: {e}")
         raise
 
-def get_namespaces_for_category(category: str) -> List[str]:
-    """Get all Pinecone namespaces for a category"""
-    uploads = db.get_uploads_by_category(category)
+def get_namespaces_for_category(category: str, course_id: int = 1) -> List[str]:
+    """Get all Pinecone namespaces for a category in a course"""
+    uploads = db.get_uploads_by_category(category, course_id)
+    course = db.get_course_by_id(course_id)
+    course_slug = course['slug'] if course else 'sales'
     
     namespaces = []
     for upload in uploads:
         video_name = upload['video_name']
-        ns = f"{category.lower().replace(' ', '_')}_{video_name.lower().replace(' ', '_')}"
+        
+        # Backward compatibility for Sales Trainer (ID 1)
+        if course_id == 1:
+            ns = f"{category.lower().replace(' ', '_')}_{video_name.lower().replace(' ', '_')}"
+        else:
+            ns = f"{course_slug}_{category.lower().replace(' ', '_')}_{video_name.lower().replace(' ', '_')}"
+            
         namespaces.append(ns)
     
     return namespaces
 
-def process_and_upload(content: str, category: str, video_name: str) -> Dict:
+def process_and_upload(content: str, category: str, video_name: str, course_id: int = 1) -> Dict:
     """Process content and upload to Pinecone"""
-    # Create namespace (e.g., "consultation_series_video1")
-    namespace = f"{category.lower().replace(' ', '_')}_{video_name.lower().replace(' ', '_')}"
+    course = db.get_course_by_id(course_id)
+    course_slug = course['slug'] if course else 'sales'
+
+    # Create namespace
+    if course_id == 1:
+        namespace = f"{category.lower().replace(' ', '_')}_{video_name.lower().replace(' ', '_')}"
+    else:
+        namespace = f"{course_slug}_{category.lower().replace(' ', '_')}_{video_name.lower().replace(' ', '_')}"
     
     # Chunk the content
     chunks = chunk_text(content)
@@ -66,8 +86,7 @@ def process_and_upload(content: str, category: str, video_name: str) -> Dict:
     embeddings = create_embeddings_batch(chunks)
     
     # Upload to Pinecone
-    pc = Pinecone(api_key=PINECONE_API_KEY)
-    index = pc.Index(host=PINECONE_INDEX_HOST)
+    index = _get_pinecone_index()
     
     vectors = []
     for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
@@ -80,7 +99,8 @@ def process_and_upload(content: str, category: str, video_name: str) -> Dict:
                 'category': category,
                 'video_name': video_name,
                 'chunk_index': i,
-                'namespace': namespace
+                'namespace': namespace,
+                'course_id': course_id # Add course_id metadata for future proofing
             }
         })
     
@@ -95,13 +115,15 @@ def process_and_upload(content: str, category: str, video_name: str) -> Dict:
         'namespace': namespace
     }
 
-def query_pinecone(embedding: List[float], category: str, top_k: int = 50, namespaces: List[str] = None) -> List[Dict]:
+def query_pinecone(embedding: List[float], category: str, top_k: int = 50, namespaces: List[str] = None, course_id: int = 1) -> List[Dict]:
     """Query Pinecone for relevant content across namespaces"""
     if namespaces is None:
-        namespaces = get_namespaces_for_category(category)
+        namespaces = get_namespaces_for_category(category, course_id)
     
-    pc = Pinecone(api_key=PINECONE_API_KEY)
-    index = pc.Index(host=PINECONE_INDEX_HOST)
+    try:
+        index = _get_pinecone_index()
+    except Exception:
+        return []
     
     def run_query(ns):
         try:
@@ -130,8 +152,7 @@ def query_pinecone(embedding: List[float], category: str, top_k: int = 50, names
 def get_rag_stats() -> Dict:
     """Get statistics about the Pinecone index and namespaces"""
     try:
-        pc = Pinecone(api_key=PINECONE_API_KEY)
-        index = pc.Index(host=PINECONE_INDEX_HOST)
+        index = _get_pinecone_index()
         stats = index.describe_index_stats()
         
         # Format for dashboard

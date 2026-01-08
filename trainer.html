@@ -4,17 +4,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AHL Sales Trainer</title>
-    <script>
-        (function(){
-            var origWarn = console.warn;
-            console.warn = function(){
-                var msg = arguments && arguments[0] ? String(arguments[0]) : '';
-                if (msg.indexOf('cdn.tailwindcss.com should not be used in production') !== -1) return;
-                return origWarn.apply(console, arguments);
-            };
-        })();
-    </script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/static/apple-touch-icon.png">
+    <link href="/static/css/output.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@deepgram/sdk"></script>
     <style>
@@ -93,6 +87,13 @@
                     <div>
                         <h1 class="text-xl font-bold tracking-tight text-slate-900">AHL Sales Trainer</h1>
                         <p class="text-slate-500 text-xs font-medium" id="user-name">Loading...</p>
+                    </div>
+                    <!-- Course Selector -->
+                    <div class="ml-6 border-l pl-6 border-slate-200">
+                        <label for="course-select" class="block text-xs font-medium text-slate-500 mb-1">Current Course</label>
+                        <select id="course-select" class="block w-48 rounded-lg border-0 py-1.5 pl-3 pr-10 text-slate-900 ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-indigo-600 sm:text-sm sm:leading-6 cursor-pointer bg-slate-50 hover:bg-white transition-colors">
+                            <option value="" disabled selected>Loading courses...</option>
+                        </select>
                     </div>
                 </div>
                 <!-- Mobile Logout (visible on small screens) -->

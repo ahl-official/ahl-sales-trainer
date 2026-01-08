@@ -55,7 +55,7 @@ def extract_json_from_text(text: str) -> Any:
 def build_category_embedding_prompt(category: str) -> str:
     return f"Summarize key facts, procedures, and scenarios for training category: {category}"
 
-def aggregate_category_content(category: str, top_k: int = None) -> str:
+def aggregate_category_content(category: str, top_k: int = None, course_id: int = 1) -> str:
     if top_k is None:
         top_k = db.get_system_setting('rag_top_k', 50)
         
@@ -73,7 +73,7 @@ def aggregate_category_content(category: str, top_k: int = None) -> str:
     text_chunks: List[str] = []
     try:
         # Use pinecone service to query
-        results = query_pinecone(embedding, category, top_k=top_k)
+        results = query_pinecone(embedding, category, top_k=top_k, course_id=course_id)
         
         # Collect metadata text
         for m in results:
@@ -89,7 +89,7 @@ def aggregate_category_content(category: str, top_k: int = None) -> str:
     combined = "\n\n".join(text_chunks)
     return combined[:20000]
 
-def build_answer_rag_context(category: str, user_answer: str, top_k: int = 5) -> str:
+def build_answer_rag_context(category: str, user_answer: str, top_k: int = 5, course_id: int = 1) -> str:
     """
     Build RAG context specifically for a user's answer by:
     - Embedding the answer
@@ -103,7 +103,7 @@ def build_answer_rag_context(category: str, user_answer: str, top_k: int = 5) ->
 
         # Query Pinecone using same namespaces as question generation
         # We can reuse query_pinecone from service
-        matches = query_pinecone(embedding, category, top_k=top_k)
+        matches = query_pinecone(embedding, category, top_k=top_k, course_id=course_id)
         
         texts: List[str] = []
         for m in matches:
@@ -112,21 +112,21 @@ def build_answer_rag_context(category: str, user_answer: str, top_k: int = 5) ->
                 texts.append(txt)
                 
         if not texts:
-            return aggregate_category_content(category, top_k=top_k)
+            return aggregate_category_content(category, top_k=top_k, course_id=course_id)
             
         combined = "\n\n".join(texts)
         return combined[:20000]
     except Exception as e:
         logger.error(f"Answer RAG context build failed: {e}")
-        return aggregate_category_content(category, top_k=top_k)
+        return aggregate_category_content(category, top_k=top_k, course_id=course_id)
 
-def determine_adaptive_difficulty(user_id: int, category: str) -> str:
+def determine_adaptive_difficulty(user_id: int, category: str, course_id: int = 1) -> str:
     """
     Determine difficulty based on user's past performance in the category.
     """
     try:
         # Get last 5 completed sessions for this category
-        sessions = db.get_user_sessions(user_id)
+        sessions = db.get_user_sessions(user_id, course_id=course_id)
         cat_sessions = [s for s in sessions 
                         if s.get('category') == category 
                         and s.get('status') == 'completed'
@@ -152,7 +152,7 @@ def determine_adaptive_difficulty(user_id: int, category: str) -> str:
         logger.error(f"Error determining adaptive difficulty: {e}")
         return 'basics'
 
-def prepare_questions(session_id: int, category: str, difficulty: str, duration_minutes: int = 10, mode: str = 'standard') -> Dict:
+def prepare_questions(session_id: int, category: str, difficulty: str, duration_minutes: int = 10, mode: str = 'standard', course_id: int = 1) -> Dict:
     """
     Prepare questions for a session using LLM and RAG.
     Replaces prepare_questions_internal_v3
@@ -181,7 +181,7 @@ def prepare_questions(session_id: int, category: str, difficulty: str, duration_
         try:
             session_data = db.get_session(session_id)
             if session_data and session_data.get('user_id'):
-                difficulty = determine_adaptive_difficulty(session_data['user_id'], category)
+                difficulty = determine_adaptive_difficulty(session_data['user_id'], category, course_id=course_id)
                 logger.info(f"Adaptive difficulty determined: {difficulty} for user {session_data['user_id']}")
             else:
                 difficulty = 'basics'
@@ -205,7 +205,7 @@ def prepare_questions(session_id: int, category: str, difficulty: str, duration_
     try:
         session_data = db.get_session(session_id)
         if session_data and session_data.get('user_id'):
-            recent_questions = db.get_recent_questions(session_data['user_id'], category, limit=50)
+            recent_questions = db.get_recent_questions(session_data['user_id'], category, limit=50, course_id=course_id)
     except Exception as e:
         logger.error(f"Failed to fetch recent questions: {e}")
 
@@ -221,7 +221,7 @@ def prepare_questions(session_id: int, category: str, difficulty: str, duration_
             embeddings = create_embeddings_batch(prompts)
             matches = []
             for emb in embeddings:
-                m = query_pinecone(emb, category, top_k=100)
+                m = query_pinecone(emb, category, top_k=100, course_id=course_id)
                 matches.extend(m or [])
             texts = []
             for m in matches:
@@ -324,7 +324,7 @@ def prepare_questions(session_id: int, category: str, difficulty: str, duration_
             "- Do NOT simplify language; use professional terminology.\n"
         )
 
-    content = aggregate_category_content(category, top_k=rag_top_k)
+    content = aggregate_category_content(category, top_k=rag_top_k, course_id=course_id)
     if not content or len(content) < 50:
         training_material_section = f"NOTE: Specific training material unavailable. Use your expert knowledge about '{category}' in a high-ticket sales context."
         strict_rule_1 = "1) Every question must be answerable from the provided context if available. Otherwise, use conservative knowledge."
@@ -480,7 +480,7 @@ def calculate_cosine_similarity(vec1: List[float], vec2: List[float]) -> float:
         
     return dot_product / (norm_a * norm_b)
 
-def evaluate_answer(session_id: int, question: Dict, user_answer: str, category: str) -> Dict:
+def evaluate_answer(session_id: int, question: Dict, user_answer: str, category: str, course_id: int = 1) -> Dict:
     """
     Evaluate a user's answer against the question and training material.
     Includes fuzzy match fallback using embeddings.
@@ -493,7 +493,7 @@ def evaluate_answer(session_id: int, question: Dict, user_answer: str, category:
     # Build evaluation prompt (objection vs standard)
     key_points = json.loads(question.get('key_points_json') or '[]')
     is_objection = bool(question.get('is_objection'))
-    training_content = build_answer_rag_context(category, user_answer, top_k=5)
+    training_content = build_answer_rag_context(category, user_answer, top_k=5, course_id=course_id)
     
     # Fetch session mode
     try:
