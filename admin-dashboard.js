@@ -152,6 +152,32 @@ document.getElementById('create-course-form')?.addEventListener('submit', async 
     }
 });
 
+async function deleteCategory(catId, catName) {
+    if (!confirm(`Are you sure you want to delete module "${catName}"?\n\nThis will permanently delete:\n- All uploaded videos in this module\n- All AI knowledge/embeddings for this module\n\nThis action cannot be undone.`)) {
+        return;
+    }
+    
+    if (!managingCourseId) return;
+    
+    try {
+        const resp = await fetch(`${API_BASE}${ADMIN_API_PREFIX}/courses/${managingCourseId}/categories/${catId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+        const data = await resp.json();
+        
+        if (resp.ok) {
+            showToast('Module deleted successfully', 'success');
+            await refreshCategoryManagerList();
+            await loadCourseCategories(); // Update the main dropdown
+        } else {
+            showToast(data.message || 'Failed to delete module', 'error');
+        }
+    } catch (e) {
+        showToast(e.message, 'error');
+    }
+}
+
 // Category Manager Modal
 let managingCourseId = null;
 
@@ -212,10 +238,16 @@ async function refreshCategoryManagerList() {
         
         data.categories.forEach(cat => {
             const div = document.createElement('div');
-            div.className = 'px-4 py-3 flex items-center justify-between text-sm hover:bg-slate-50';
+            div.className = 'px-4 py-3 flex items-center justify-between text-sm hover:bg-slate-50 group';
             div.innerHTML = `
-                <span class="text-slate-700">${cat.name}</span>
-                <span class="text-xs text-slate-400">#${cat.id}</span>
+                <div class="flex items-center gap-3">
+                    <span class="text-slate-700 font-medium">${cat.name}</span>
+                    <span class="text-xs text-slate-400">#${cat.id}</span>
+                </div>
+                <button onclick="deleteCategory(${cat.id}, '${cat.name.replace(/'/g, "\\'")}')" 
+                    class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors" title="Delete Module">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </button>
             `;
             list.appendChild(div);
         });

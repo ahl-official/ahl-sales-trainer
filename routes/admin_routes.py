@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app, session, Response
 from services.auth_service import register_user, list_users, delete_user
-from services.pinecone_service import process_and_upload
+from services.pinecone_service import process_and_upload, delete_category_namespaces
 from sync_pinecone_full import sync_pinecone_full
 from utils.decorators import admin_required, role_required
 from utils.cache import cache_get, cache_set
@@ -298,6 +298,32 @@ def create_course_route():
         return jsonify({'success': True, 'course_id': cid})
     except Exception as e:
         return jsonify({'error': 'create_failed', 'message': str(e)}), 500
+
+@admin_bp.route('/courses/<int:course_id>/categories/<int:category_id>', methods=['DELETE'])
+@admin_required
+def delete_course_category_route(course_id, category_id):
+    try:
+        # Get category details first for Pinecone deletion
+        cats = db.get_course_categories(course_id)
+        category = next((c for c in cats if c['id'] == category_id), None)
+        
+        if not category:
+            return jsonify({'error': 'not_found'}), 404
+            
+        # Delete from Pinecone
+        deleted_namespaces = delete_category_namespaces(category['name'], course_id)
+        
+        # Delete from DB
+        success = db.delete_course_category(course_id, category_id)
+        
+        if success:
+            return jsonify({'success': True, 'deleted_namespaces': deleted_namespaces})
+        else:
+            return jsonify({'error': 'db_delete_failed'}), 500
+            
+    except Exception as e:
+        logger.error(f"Failed to delete category {category_id}: {e}")
+        return jsonify({'error': 'delete_failed', 'message': str(e)}), 500
         
 @admin_bp.route('/courses/<int:course_id>', methods=['DELETE'])
 @admin_required

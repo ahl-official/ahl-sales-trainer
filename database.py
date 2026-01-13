@@ -1433,6 +1433,36 @@ class Database:
         conn.close()
         return cat_id
     
+    def delete_course_category(self, course_id: int, category_id: int) -> bool:
+        """Delete a category from a course and its associated uploads"""
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Get category name first to delete uploads
+            cursor.execute('SELECT name FROM course_categories WHERE id = ? AND course_id = ?', (category_id, course_id))
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return False
+                
+            category_name = row['name']
+            
+            # Delete uploads associated with this category and course
+            cursor.execute('DELETE FROM uploads WHERE category = ? AND course_id = ?', (category_name, course_id))
+            
+            # Delete the category itself
+            cursor.execute('DELETE FROM course_categories WHERE id = ?', (category_id,))
+            
+            conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete course category: {e}")
+            conn.rollback()
+            return False
+        finally:
+            conn.close()
+    
     def delete_course(self, course_id: int):
         conn = self._get_connection()
         cursor = conn.cursor()

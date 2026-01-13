@@ -68,6 +68,29 @@ def get_namespaces_for_category(category: str, course_id: int = 1) -> List[str]:
     
     return namespaces
 
+def delete_category_namespaces(category: str, course_id: int = 1) -> int:
+    """Delete all Pinecone namespaces for a category in a course"""
+    namespaces = get_namespaces_for_category(category, course_id)
+    if not namespaces:
+        return 0
+    
+    try:
+        index = _get_pinecone_index()
+    except Exception:
+        logger.error("Failed to connect to Pinecone for deletion")
+        return 0
+        
+    count = 0
+    for ns in namespaces:
+        try:
+            index.delete(delete_all=True, namespace=ns)
+            count += 1
+            logger.info(f"Deleted Pinecone namespace: {ns}")
+        except Exception as e:
+            logger.error(f"Failed to delete namespace {ns}: {e}")
+            
+    return count
+
 def process_and_upload(content: str, category: str, video_name: str, course_id: int = 1) -> Dict:
     """Process content and upload to Pinecone"""
     course = db.get_course_by_id(course_id)
